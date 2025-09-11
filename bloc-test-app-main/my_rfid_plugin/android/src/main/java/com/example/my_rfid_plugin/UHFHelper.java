@@ -70,7 +70,14 @@ public class UHFHelper {
                 String result = (String) msg.obj;
                 String[] strs = result.split("@");
                 if (strs.length == 2) {
-                    addEPCToList(strs[0], strs[1]);
+                    // SAFETY: Clean EPC from any prefixes
+                    String cleanEpc = strs[0].replace("EPC:", "").trim();
+                    int idx = cleanEpc.indexOf('\n');
+                    if (idx >= 0)
+                        cleanEpc = cleanEpc.substring(idx + 1).trim();
+
+                    addEPCToList(cleanEpc, strs[1]);
+                    Log.d(TAG, "✅ HANDLER: Clean EPC added: " + cleanEpc);
                 }
             }
         };
@@ -97,18 +104,38 @@ public class UHFHelper {
             uhfListener.onConnect(isConnect, 0);
 
         if (isConnect) {
-            // try {
-            // mReader.setEPCMode();
-            // } catch (Exception ignore) {
-            // }
-            // try {
-            // mReader.setTagFocus(true);
-            // } catch (Exception ignore) {
-            // }
-            // try {
-            // mReader.setFastID(true);
-            // } catch (Exception ignore) {
-            // }
+            try {
+                // CORRECTED: Use InventoryModeEntity to properly configure scanning
+                Log.i(TAG, "🔧 MODE-CONFIG: Configuring proper scanning mode");
+
+                // Simple configuration without complex mode checking
+                Log.i(TAG, "🔧 SIMPLE-SETUP: Configuring for TID+USER reading");
+
+                // Set EPC+TID+USER mode (mode 2)
+                boolean allModeSet = mReader.setEPCAndTIDUserMode(0, 32);
+                Log.i(TAG, "🔧 SET-MODE: EPC+TID+USER mode set result: " + allModeSet);
+
+                // Simple verification
+                Thread.sleep(100);
+                Log.i(TAG, "🔧 SETUP-COMPLETE: TID+USER configuration completed");
+
+            } catch (Exception e) {
+                Log.w(TAG, "🔧 CONFIG: Failed to configure scanning modes: " + e.getMessage());
+            }
+
+            try {
+                mReader.setTagFocus(true);
+                Log.i(TAG, "🔧 CONFIG: TagFocus enabled");
+            } catch (Exception ignore) {
+                Log.w(TAG, "🔧 CONFIG: TagFocus not available");
+            }
+
+            try {
+                mReader.setFastID(false); // Disable FastID for better TID/USER reading
+                Log.i(TAG, "🔧 CONFIG: FastID disabled for better TID/USER reading");
+            } catch (Exception ignore) {
+                Log.w(TAG, "🔧 CONFIG: FastID control not available");
+            }
         }
         return isConnect;
     }
@@ -286,20 +313,128 @@ public class UHFHelper {
         return false;
     }
 
-    // Single EPC read
+    // Single EPC read with TID support
     public synchronized String readSingleTagEPC() {
         if (mReader == null) {
-            Log.e(TAG, "mReader is null, cannot readSingleTagEPC");
+            Log.e(TAG, "❌ DEBUG: mReader is null, cannot readSingleTagEPC");
             return "";
         }
 
-        UHFTAGInfo info = mReader.inventorySingleTag();
-        if (info != null) {
-            String epcHex = info.getEPC();
-            Log.i(TAG, "Read single EPC: " + epcHex);
-            return epcHex;
+        try {
+            Log.d(TAG, "🔍 DEBUG: Calling inventorySingleTag()");
+            UHFTAGInfo info = mReader.inventorySingleTag();
+
+            if (info != null) {
+                String epcHex = info.getEPC();
+                String tid = info.getTid();
+                String rssi = info.getRssi();
+
+                Log.i(TAG, "✅ DEBUG: Read single tag:");
+                Log.i(TAG, "✅   EPC: " + epcHex);
+                Log.i(TAG, "✅   TID: " + tid);
+                Log.i(TAG, "✅   RSSI: " + rssi);
+
+                return epcHex;
+            } else {
+                Log.d(TAG, "🔍 DEBUG: inventorySingleTag() returned null");
+                return "";
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "❌ DEBUG: Exception in readSingleTagEPC: " + e.getMessage());
+            return "";
         }
-        return "";
+    }
+
+    // OPTIMIZED: Stable tag reading with better timing
+    public synchronized String readSingleTagWithTid() {
+        if (mReader == null) {
+            Log.e(TAG, "mReader is null, cannot readSingleTagWithTid");
+            return "";
+        }
+
+        try {
+            Log.d(TAG, "🔍 STABLE-READ: Attempting stable tag detection");
+
+            UHFTAGInfo info = mReader.inventorySingleTag();
+
+            if (info != null) {
+                String epcHex = info.getEPC();
+                String tid = info.getTid();
+                String rssi = info.getRssi();
+
+                Log.i(TAG, "🔍 DETECTED: EPC: " + epcHex);
+                Log.i(TAG, "🔍 DETECTED: TID: '" + (tid != null ? tid : "null") + "' (length: "
+                        + (tid != null ? tid.length() : 0) + ")");
+                Log.i(TAG, "🔍 DETECTED: RSSI: " + rssi);
+
+                // Try to read TID directly if empty from inventorySingleTag
+                if (tid == null || tid.isEmpty() || "000000000000000000000000".equals(tid)) {
+                    Log.i(TAG, "🔍 DIRECT-TID: Attempting direct TID bank read");
+                    try {
+                        String tidDirect = mReader.readData("00000000", RFIDWithUHFUART.Bank_TID, 0, 6);
+                        Log.i(TAG, "🔍 DIRECT-TID: Result: '" + tidDirect + "'");
+                        if (tidDirect != null && !tidDirect.isEmpty() &&
+                                !tidDirect.equals("000000000000000000000000") &&
+                                !tidDirect.equals("00000000000000000000000000000000")) {
+                            tid = tidDirect;
+                            Log.i(TAG, "✅ DIRECT-TID: Got valid TID: " + tid);
+                        }
+                    } catch (Exception e) {
+                        Log.w(TAG, "❌ DIRECT-TID: Failed: " + e.getMessage());
+                    }
+                }
+
+                // Read USER memory immediately while tag is detected
+                String userMemory = "";
+                try {
+                    Log.i(TAG, "🔍 TID-FILTER: Reading USER memory using TID as filter");
+                    Log.i(TAG, "🔍   Target TID: " + (tid != null ? tid : "null"));
+
+                    if (tid != null && !tid.isEmpty() && tid.length() >= 8) {
+                        // BREAKTHROUGH: Use TID as filter to read USER from specific tag!
+                        int tidBits = tid.length() * 4; // Convert hex chars to bits
+                        Log.i(TAG, "🔍 TID-FILTER: Filtering by TID - " + tid + " (" + tidBits + " bits)");
+
+                        userMemory = mReader.readData("00000000",
+                                RFIDWithUHFUART.Bank_TID, 0, tidBits, tid, // Filter by TID
+                                RFIDWithUHFUART.Bank_USER, 0, 32); // Read USER
+
+                        if (userMemory != null && userMemory.length() >= 16) {
+                            Log.i(TAG,
+                                    "✅ TID-FILTER: SUCCESS! Got USER memory for TID " + tid.substring(0, 8) + "...: " +
+                                            userMemory.substring(0, Math.min(32, userMemory.length())) + "...");
+                        } else {
+                            Log.w(TAG, "❌ TID-FILTER: Failed, trying direct read as fallback");
+                            userMemory = mReader.readData("00000000", RFIDWithUHFUART.Bank_USER, 0, 32);
+                            if (userMemory != null && userMemory.length() >= 16) {
+                                Log.i(TAG, "🔄 DIRECT-FALLBACK: Got USER via direct read: "
+                                        + userMemory.substring(0, Math.min(32, userMemory.length())) + "...");
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "❌ TID-FILTER: Invalid TID, using direct read");
+                        userMemory = mReader.readData("00000000", RFIDWithUHFUART.Bank_USER, 0, 32);
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "❌ TID-FILTER: Exception: " + e.getMessage());
+                }
+
+                boolean validTid = tid != null && !tid.isEmpty() &&
+                        !tid.equals("000000000000000000000000") &&
+                        !tid.equals("00000000000000000000000000000000");
+
+                // Return comprehensive tag information including immediate USER memory
+                return "{\"epc\":\"" + epcHex + "\",\"tid\":\"" + (tid != null ? tid : "") +
+                        "\",\"rssi\":\"" + rssi + "\",\"validTid\":" + validTid +
+                        ",\"userMemory\":\"" + userMemory + "\"}";
+            }
+
+            Log.d(TAG, "🔍 DETECTED: No tag found");
+            return "";
+        } catch (Exception e) {
+            Log.e(TAG, "❌ CORRECTED: Error: " + e.getMessage());
+            return "";
+        }
     }
 
     // ----------- ASIL EPC YAZMA KODU (ATA/GS1/6bit ve PC Word ile) -----------
@@ -709,23 +844,20 @@ public class UHFHelper {
         this.uhfListener = uhfListener;
     }
 
-    // Continuous inventory thread
+    // FIXED: Continuous inventory thread - clean EPC only
     class TagThread extends Thread {
         @Override
         public void run() {
             while (isStart && mReader != null) {
                 UHFTAGInfo info = mReader.readTagFromBuffer();
                 if (info != null) {
-                    String tid = info.getTid();
-                    String epcStr = "EPC:" + info.getEPC();
+                    String epcHex = info.getEPC(); // Clean EPC only
                     String rssiStr = info.getRssi();
-                    String strResult = "";
-                    if (!tid.isEmpty() && !"000000000000000000000000".equals(tid)) {
-                        strResult = "TID:" + tid + "\n";
-                    }
+                    // FIXED: Send only "EPC@RSSI" format
                     Message msg = handler.obtainMessage();
-                    msg.obj = strResult + epcStr + "@" + rssiStr;
+                    msg.obj = epcHex + "@" + rssiStr;
                     handler.sendMessage(msg);
+                    Log.d(TAG, "✅ CLEAN-EPC: " + epcHex + " (RSSI: " + rssiStr + ")");
                 }
             }
         }
@@ -830,43 +962,51 @@ public class UHFHelper {
         }
     }
 
-    // Reads USER memory of the tag
-    public String readUserMemory() {
+    // Reads USER memory of the currently strongest/closest tag
+    public synchronized String readUserMemory() {
         if (mReader == null) {
             Log.e(TAG, "mReader is null; cannot read USER memory!");
             return "";
         }
+
         boolean resumeInventory = false;
         try {
-            // envanter çalışıyorsa durdur
+            // Stop inventory if running to get clean read
             if (isStart) {
                 resumeInventory = true;
                 mReader.stopInventory();
+                isStart = false;
+                Thread.sleep(100); // Allow complete stop
             }
+
             String accessPwd = "00000000";
-            // Header (w0..w3)
-            String hdr = mReader.readData(accessPwd, RFIDWithUHFUART.Bank_USER, 0, 4);
-            if (hdr == null || hdr.length() < 16) {
-                Log.e(TAG, "USER header read failed");
+            Log.i(TAG, "Reading USER memory from strongest available tag");
+
+            // Try to read USER memory directly (will read from strongest tag in range)
+            String userHex = mReader.readData(accessPwd, RFIDWithUHFUART.Bank_USER, 0, 32);
+
+            if (userHex != null && userHex.length() >= 16) {
+                Log.i(TAG, "SUCCESS: Read USER memory (no EPC filter): "
+                        + userHex.substring(0, Math.min(32, userHex.length())) + "...");
+                return userHex;
+            } else {
+                Log.w(TAG, "USER memory read returned empty or short data");
                 return "";
             }
-            int w3 = Integer.parseInt(hdr.substring(12, 16), 16);
-            if (w3 < 4)
-                w3 = 4;
-            String all = mReader.readData(accessPwd, RFIDWithUHFUART.Bank_USER, 0, w3);
-            Log.i(TAG, "Read USER memory exact: " + all);
-            return all != null ? all : "";
+
         } catch (Exception e) {
-            Log.e(TAG, "Error reading USER memory exact", e);
+            Log.e(TAG, "Error reading USER memory: " + e.getMessage());
             return "";
         } finally {
-            // gerekirse envanteri yeniden başlat
+            // Restart inventory if it was running
             if (resumeInventory) {
                 try {
+                    Thread.sleep(50);
                     mReader.startInventoryTag();
                     isStart = true;
                     new TagThread().start();
-                } catch (Exception ignore) {
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to restart inventory: " + e.getMessage());
                 }
             }
         }
@@ -947,32 +1087,264 @@ public class UHFHelper {
     }
 
     public synchronized String readUserMemoryForEpc(String epcHex) {
-        if (mReader == null)
+        Log.i(TAG, "*** FIXED readUserMemoryForEpc for: " + epcHex + " ***");
+        if (mReader == null) {
+            Log.e(TAG, "mReader is null in readUserMemoryForEpc");
             return "";
+        }
+
+        if (epcHex == null || epcHex.isEmpty()) {
+            Log.w(TAG, "Empty EPC provided");
+            return "";
+        }
+
+        boolean wasRunning = isStart;
+        try {
+            // Stop inventory completely to avoid tag mixing
+            if (wasRunning) {
+                mReader.stopInventory();
+                isStart = false;
+                Thread.sleep(100);
+            }
+
+            String accessPwd = "00000000";
+            clearFilter(); // Start clean
+
+            Log.i(TAG, "Using single-tag verification approach to prevent mixing");
+
+            // Try to find our specific tag multiple times
+            for (int attempt = 0; attempt < 15; attempt++) {
+                try {
+                    UHFTAGInfo tagInfo = mReader.inventorySingleTag();
+                    if (tagInfo != null) {
+                        String foundEpc = tagInfo.getEPC();
+                        Log.i(TAG, "Found: " + foundEpc + " | Target: " + epcHex);
+
+                        // Only read if this is exactly our target tag
+                        if (epcHex.equalsIgnoreCase(foundEpc)) {
+                            Log.i(TAG, "EXACT MATCH! Reading USER memory for verified tag...");
+
+                            // Read immediately while tag is detected
+                            String userHex = mReader.readData(accessPwd, RFIDWithUHFUART.Bank_USER, 0, 32);
+
+                            if (userHex != null && userHex.length() >= 16) {
+                                Log.i(TAG, "SUCCESS: Verified USER read for " + epcHex + " = "
+                                        + userHex.substring(0, Math.min(32, userHex.length())));
+                                return userHex;
+                            } else {
+                                Log.w(TAG, "USER memory was empty for matched EPC, retrying...");
+                            }
+                        } else {
+                            Log.d(TAG, "Different tag detected, continuing search...");
+                        }
+                    } else {
+                        Log.d(TAG, "No tag detected in attempt " + (attempt + 1));
+                    }
+
+                    // Brief pause between attempts
+                    Thread.sleep(80);
+
+                } catch (Exception e) {
+                    Log.w(TAG, "Attempt " + attempt + " error: " + e.getMessage());
+                    Thread.sleep(50);
+                }
+            }
+
+            Log.w(TAG, "Could not find or read USER memory for target EPC: " + epcHex);
+            return "";
+
+        } catch (Exception e) {
+            Log.e(TAG, "Critical error in readUserMemoryForEpc: " + e.getMessage());
+            return "";
+        } finally {
+            // Always clean up
+            try {
+                clearFilter();
+                if (wasRunning) {
+                    mReader.startInventoryTag();
+                    isStart = true;
+                    new TagThread().start();
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Cleanup failed: " + e.getMessage());
+            }
+        }
+    }
+
+    // STRICT EPC-USER reading (per SDK documentation)
+    public synchronized String readUserMemoryForEpcStrict(String epcHex) {
+        Log.i(TAG, "🔧 STRICT: Reading USER memory for EPC: " + epcHex);
+        if (mReader == null || epcHex == null || epcHex.isEmpty()) {
+            return "";
+        }
+
+        boolean wasRunning = isStart;
+        final String accessPwd = "00000000";
+
+        try {
+            // 1) Stop inventory (required per SDK docs)
+            if (wasRunning) {
+                mReader.stopInventory();
+                isStart = false;
+                Thread.sleep(80);
+                Log.i(TAG, "🔧 STRICT: Inventory stopped");
+            }
+
+            // 2) Clean start
+            clearFilter();
+
+            // 3) Set EPC filter (ptr=32 to skip PC+CRC)
+            int epcBits = epcHex.length() * 4;
+            if (!mReader.setFilter(RFIDWithUHFUART.Bank_EPC, 32, epcBits, epcHex)) {
+                Log.w(TAG, "❌ STRICT: EPC filter failed for " + epcHex);
+                return "";
+            }
+            Thread.sleep(50);
+            Log.i(TAG, "🔧 STRICT: EPC filter set for " + epcHex.substring(0, 8) + "...");
+
+            // 4) Read USER header first (w0..w3) to get total word count
+            String hdr = mReader.readData(accessPwd, RFIDWithUHFUART.Bank_USER, 0, 4,
+                    epcHex, RFIDWithUHFUART.Bank_EPC, 32, epcBits);
+            if (hdr == null || hdr.length() < 16) {
+                Log.w(TAG, "❌ STRICT: USER header read failed for " + epcHex);
+                return "";
+            }
+
+            // Parse w3 for total USER word count (header + payload)
+            int totalWords = 4; // minimum header
+            try {
+                totalWords = Math.max(4, Integer.parseInt(hdr.substring(12, 16), 16));
+            } catch (Exception ignore) {
+                totalWords = 32; // safe default
+            }
+            totalWords = Math.min(totalWords, 64); // safety limit
+
+            Log.i(TAG, "🔧 STRICT: USER header OK, reading " + totalWords + " words");
+
+            // 5) Read complete USER area with EPC filter
+            String allUserData = mReader.readData(accessPwd, RFIDWithUHFUART.Bank_USER, 0, totalWords,
+                    epcHex, RFIDWithUHFUART.Bank_EPC, 32, epcBits);
+
+            if (allUserData != null && allUserData.length() >= 16) {
+                Log.i(TAG, "✅ STRICT: SUCCESS for " + epcHex.substring(0, 8) + "... → " +
+                        allUserData.substring(0, Math.min(32, allUserData.length())) + "...");
+                return allUserData;
+            } else {
+                Log.w(TAG, "❌ STRICT: Empty USER data for " + epcHex);
+                return "";
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "❌ STRICT: Error for " + epcHex + ": " + e.getMessage());
+            return "";
+        } finally {
+            // Always clean up
+            try {
+                clearFilter();
+                Log.d(TAG, "🔧 STRICT: Filter cleared");
+            } catch (Exception ignore) {
+            }
+
+            if (wasRunning) {
+                try {
+                    mReader.startInventoryTag();
+                    isStart = true;
+                    new TagThread().start();
+                    Log.d(TAG, "🔧 STRICT: Inventory restarted");
+                } catch (Exception ignore) {
+                }
+            }
+        }
+    }
+
+    public synchronized String readUserMemoryForEpcOld(String epcHex) {
+        Log.i(TAG, "*** readUserMemoryForEpcOld CALLED for: " + epcHex + " ***");
+        if (mReader == null) {
+            Log.e(TAG, "mReader is null in readUserMemoryForEpcOld");
+            return "";
+        }
         boolean wasRunning = isStart;
         try {
             if (wasRunning) {
                 mReader.stopInventory();
                 isStart = false;
             }
+
             String accessPwd = "00000000";
             int userBank = RFIDWithUHFUART.Bank_USER;
-            // Read header to determine length, no EPC filter
-            String hdr = mReader.readData(accessPwd, userBank, 0, 4);
-            if (hdr == null || hdr.length() < 16) {
-                Log.w(TAG, "USER header read failed");
+
+            Log.i(TAG, "Reading USER memory for specific EPC: " + epcHex);
+
+            // Try the direct EPC-matching readData method first
+            try {
+                int epcBits = epcHex.length() * 4;
+                Log.i(TAG, "Attempting EPC-matched USER read for: " + epcHex + " (bits=" + epcBits + ")");
+
+                // Use readData with EPC matching: readData(accessPwd, bank, ptr, cnt, epcHex,
+                // epcBank, epcPtr, epcCnt)
+                String all = mReader.readData(accessPwd, userBank, 0, 32, epcHex, RFIDWithUHFUART.Bank_EPC, 32,
+                        epcBits);
+                if (all != null && all.length() >= 16) {
+                    Log.i(TAG, "SUCCESS: EPC-matched USER read for " + epcHex + ": " + all);
+                    return all;
+                } else {
+                    Log.w(TAG, "EPC-matched USER read returned empty for: " + epcHex);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "EPC-matched readData failed for " + epcHex + ": " + e.getMessage());
+            }
+
+            // If EPC-matching failed, try with EPC filter approach
+            Log.i(TAG, "Fallback: Using EPC filter approach for: " + epcHex);
+            try {
+                if (!setEpcFilterForHex(epcHex)) {
+                    Log.w(TAG, "Failed to set EPC filter for: " + epcHex);
+                    return "";
+                }
+                Thread.sleep(100); // Allow filter to take effect
+            } catch (Exception e) {
+                Log.w(TAG, "Error setting EPC filter: " + e.getMessage());
                 return "";
             }
-            int w3 = 4;
+
             try {
-                w3 = Integer.parseInt(hdr.substring(12, 16), 16);
-                if (w3 < 4)
-                    w3 = 4;
-            } catch (Exception ignore) {
+                // Use EPC-matching readData method: readData(accessPwd, bank, ptr, cnt, epcHex,
+                // epcBank, epcPtr, epcCnt)
+                int epcBits = epcHex.length() * 4;
+
+                // First read header to determine actual length
+                String hdr = mReader.readData(accessPwd, userBank, 0, 4, epcHex, RFIDWithUHFUART.Bank_EPC, 32, epcBits);
+                if (hdr == null || hdr.length() < 16) {
+                    Log.w(TAG, "USER header read failed for EPC: " + epcHex);
+                    return "";
+                }
+
+                int w3 = 4;
+                try {
+                    w3 = Integer.parseInt(hdr.substring(12, 16), 16);
+                    if (w3 < 4)
+                        w3 = 4;
+                } catch (Exception ignore) {
+                    w3 = 32; // Default safe size
+                }
+
+                // Read the full USER memory with EPC matching
+                String all = mReader.readData(accessPwd, userBank, 0, w3, epcHex, RFIDWithUHFUART.Bank_EPC, 32,
+                        epcBits);
+                if (all != null && all.length() >= 16) {
+                    Log.i(TAG, "Read USER memory for EPC " + epcHex + ": " + all);
+                    return all;
+                } else {
+                    Log.w(TAG, "EPC-matched USER memory read returned empty for EPC: " + epcHex);
+                    return "";
+                }
+            } finally {
+                // Always clear the filter after reading
+                try {
+                    clearFilter();
+                } catch (Exception ignore) {
+                }
             }
-            String all = mReader.readData(accessPwd, userBank, 0, w3);
-            Log.i(TAG, "Read USER memory exact: " + all);
-            return all != null ? all : "";
         } catch (Exception e) {
             Log.e(TAG, "readUserMemoryForEpc error", e);
             return "";
@@ -1000,15 +1372,30 @@ public class UHFHelper {
             return false;
         }
         try {
-            lastPowerLevel = mReader.getPower();
+            // Stop any ongoing inventory to prevent interference
+            if (isStart) {
+                mReader.stopInventory();
+                isStart = false;
+            }
 
+            // Clear any existing filters to ensure clean start
+            try {
+                clearFilter();
+                Thread.sleep(100); // Give time for filter to clear
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to clear filter before location: " + e.getMessage());
+            }
+
+            lastPowerLevel = mReader.getPower();
             mReader.setPower(30);
+
+            Log.i(TAG, "Starting location for EPC: " + label + " at bank=" + bank + " ptr=" + ptr);
             return mReader.startLocation(this.context, label, bank, ptr, new IUHFLocationCallback() {
                 @Override
                 public void getLocationValue(int value) {
                     Log.i(TAG, "Location signal strength: " + value);
                     if (locationSink != null)
-                        locationSink.success(value); // <-- KRİTİK
+                        locationSink.success(value);
                 }
             });
         } catch (Exception e) {
@@ -1029,6 +1416,69 @@ public class UHFHelper {
         } catch (Exception e) {
             Log.e(TAG, "Error stopping location: " + e.getMessage(), e);
             return false;
+        }
+    }
+
+    // DIAGNOSTIC: Test individual tag reading
+    public synchronized String diagnosticReadSingleTag() {
+        if (mReader == null) {
+            return "{\"error\":\"mReader is null\"}";
+        }
+
+        try {
+            Log.i(TAG, "🔬 DIAGNOSTIC: Starting individual tag analysis");
+
+            // Clear any filters to start fresh
+            clearFilter();
+
+            // Try to detect a tag
+            UHFTAGInfo info = mReader.inventorySingleTag();
+            if (info == null) {
+                return "{\"error\":\"No tag detected\"}";
+            }
+
+            String epcHex = info.getEPC();
+            String tid = info.getTid();
+            String rssi = info.getRssi();
+
+            Log.i(TAG, "🔬 DIAGNOSTIC: Found tag");
+            Log.i(TAG, "🔬   EPC: " + epcHex);
+            Log.i(TAG, "🔬   TID: '" + (tid != null ? tid : "null") + "'");
+            Log.i(TAG, "🔬   RSSI: " + rssi);
+
+            // Test 1: Read TID directly
+            String directTid = "";
+            try {
+                directTid = mReader.readData("00000000", RFIDWithUHFUART.Bank_TID, 0, 6);
+                Log.i(TAG, "🔬 DIRECT-TID: " + (directTid != null ? directTid : "null"));
+            } catch (Exception e) {
+                Log.w(TAG, "🔬 DIRECT-TID failed: " + e.getMessage());
+            }
+
+            // Test 2: Read USER memory directly
+            String userMemory = "";
+            try {
+                userMemory = mReader.readData("00000000", RFIDWithUHFUART.Bank_USER, 0, 32);
+                Log.i(TAG,
+                        "🔬 USER-READ: " + (userMemory != null && userMemory.length() >= 16
+                                ? userMemory.substring(0, Math.min(32, userMemory.length())) + "..."
+                                : "EMPTY"));
+            } catch (Exception e) {
+                Log.w(TAG, "🔬 USER-READ failed: " + e.getMessage());
+            }
+
+            // Test 3: Check if this tag has any USER memory at all
+            boolean hasUserMemory = userMemory != null && userMemory.length() >= 16 &&
+                    !userMemory.equals("0000000000000000") &&
+                    !userMemory.startsWith("0000000000000000");
+
+            return "{\"epc\":\"" + epcHex + "\",\"tid\":\"" + (tid != null ? tid : "") +
+                    "\",\"directTid\":\"" + directTid + "\",\"rssi\":\"" + rssi +
+                    "\",\"userMemory\":\"" + userMemory + "\",\"hasUserMemory\":" + hasUserMemory + "}";
+
+        } catch (Exception e) {
+            Log.e(TAG, "🔬 DIAGNOSTIC error: " + e.getMessage());
+            return "{\"error\":\"" + e.getMessage() + "\"}";
         }
     }
 

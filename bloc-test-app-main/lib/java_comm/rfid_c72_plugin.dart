@@ -195,6 +195,17 @@ class RfidC72Plugin {
     return epcHex;
   }
 
+  static Future<String?> readSingleTagWithTid() async {
+    final String? tagInfo = await _channel.invokeMethod('readSingleTagWithTid');
+    return tagInfo;
+  }
+
+  static Future<String?> diagnosticReadSingleTag() async {
+    final String? diagnostic =
+        await _channel.invokeMethod('diagnosticReadSingleTag');
+    return diagnostic;
+  }
+
   // Key Event Handling
   static void initializeKeyEventHandler(BuildContext context) {
     _log('Key handler attached');

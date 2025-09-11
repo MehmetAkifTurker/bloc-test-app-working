@@ -1284,6 +1284,7 @@
 // }
 // lib/ui/screens/box_check_scan_screen/box_check_scan_screen.dart
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 
@@ -1297,6 +1298,7 @@ import 'package:water_boiler_rfid_labeler/models/tag_item.dart';
 import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
 import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/epc_user_codec.dart';
 import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/tag_detail_screen.dart';
+import 'package:water_boiler_rfid_labeler/ui/screens/diagnostic_screen.dart';
 
 class FilterOption {
   final int id;
@@ -1382,6 +1384,10 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   final Set<String> _epcSet = <String>{};
   final Map<String, DateTime> _lastSeen = {};
 
+  // TID-based USER memory cache to prevent mixing
+  final Map<String, String> _tidToUserMemory = <String, String>{};
+  final Set<String> _tidSet = <String>{};
+
   // Filter
   FilterOption? _selectedAta = kAtaAll;
   List<FilterOption> get _ataOptions => [kAtaAll, ...kAtaFilterOptions];
@@ -1428,60 +1434,158 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
 
   Future<void> _readTag() async {
     try {
-      final String? raw = await RfidC72Plugin.readSingleTagEpc();
-      if (raw == null || raw.isEmpty) return;
+      // BUFFER-BASED APPROACH: Use continuous inventory like TagThread
+      final String? tagInfoJson = await RfidC72Plugin.readSingleTagWithTid();
+      if (tagInfoJson == null || tagInfoJson.isEmpty) return;
 
-      final epcHex = raw.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+      log("🔍 BUFFER-SCAN: Raw tag info: $tagInfoJson");
+
+      // Parse the JSON response containing EPC, TID, and RSSI
+      late Map<String, dynamic> tagInfo;
+      try {
+        tagInfo = jsonDecode(tagInfoJson);
+      } catch (e) {
+        log("❌ TID-SCAN: Failed to parse tag info JSON: $e");
+        return;
+      }
+
+      final String epcHex = (tagInfo['epc'] ?? '')
+          .toString()
+          .replaceAll(RegExp(r'\s+'), '')
+          .toUpperCase();
+      final String tid = (tagInfo['tid'] ?? '').toString().toUpperCase();
+      final String rssi = (tagInfo['rssi'] ?? '').toString();
+      final bool validTid = tagInfo['validTid'] == true;
+      final String directUserMemory = (tagInfo['userMemory'] ?? '').toString();
+
+      if (epcHex.isEmpty) return;
+
+      log("🔍 BUFFER-SCAN: Detected tag with working TID reading:");
+      log("🔍   EPC: $epcHex");
+      log("🔍   TID: ${tid.isNotEmpty ? tid : 'EMPTY'} (${validTid ? 'VALID' : 'INVALID'})");
+      log("🔍   RSSI: $rssi");
+      log("🔍   Direct USER: ${directUserMemory.isNotEmpty ? '${directUserMemory.length} chars' : 'EMPTY'}");
 
       final now = DateTime.now();
       final last = _lastSeen[epcHex];
-      if (last != null && now.difference(last) < const Duration(seconds: 3)) {
+      if (last != null && now.difference(last) < const Duration(seconds: 2)) {
+        log("🔍 COOLDOWN: Skipping $epcHex (seen ${now.difference(last).inMilliseconds}ms ago)");
         return;
       }
       _lastSeen[epcHex] = now;
 
-      if (_epcSet.contains(epcHex)) return;
+      // Use TID for unique identification (now working!)
+      final String uniqueId = validTid && tid.isNotEmpty ? tid : epcHex;
+      if (_tidSet.contains(uniqueId)) {
+        log("🔍 BUFFER-SCAN: Duplicate tag (TID: ${uniqueId.substring(0, 16)}...) - skipping");
+        return;
+      }
+
+      log("✅ NEW-TAG: First time seeing TID: ${uniqueId.substring(0, 16)}...");
 
       final decoded = decodeEpc(epcHex);
 
+      // Read USER memory using enhanced strategy
+      String? userHex;
+      if (_tidToUserMemory.containsKey(uniqueId)) {
+        // Use cached USER memory for this ID
+        userHex = _tidToUserMemory[uniqueId];
+        log("✅ CACHE: Using cached USER memory for ID: ${uniqueId.length > 20 ? uniqueId.substring(0, 20) + "..." : uniqueId}");
+      } else {
+        // Read USER memory immediately and cache it
+        try {
+          final String idType = validTid ? "TID" : "EPC";
+          log("🔍 STRATEGY: Reading USER memory for $idType: ${uniqueId.length > 20 ? uniqueId.substring(0, 20) + "..." : uniqueId}");
+          log("🔍 STRATEGY: RSSI: $rssi (stronger signal = more likely to read correctly)");
+
+          // ❌ REMOVED: This was overriding correct TID-filtered data!
+          // userHex = await RfidC72Plugin.readUserMemory();
+
+          // ✅ Use TID-filtered data from SDK instead
+          if (directUserMemory.isNotEmpty && directUserMemory.length >= 16) {
+            userHex = directUserMemory;
+            log("✅ USING TID-FILTERED: ${directUserMemory.substring(0, 32)}...");
+          } else {
+            userHex = null;
+            log("❌ NO TID-FILTERED DATA");
+          }
+
+          if (userHex != null && userHex.length >= 16) {
+            _tidToUserMemory[uniqueId] = userHex;
+            log("✅ SUCCESS: Cached USER memory for $idType: ${uniqueId.length > 20 ? uniqueId.substring(0, 20) + "..." : uniqueId}");
+            log("✅ SUCCESS: USER data (${userHex.length} chars): ${userHex.substring(0, userHex.length >= 64 ? 64 : userHex.length)}");
+
+            // CRITICAL DEBUG: Check if this USER memory is different from others
+            bool isDifferent = _tidToUserMemory.values
+                .where((cached) => cached != userHex)
+                .isNotEmpty;
+            log("🔍 UNIQUENESS: This USER memory is ${isDifferent ? 'DIFFERENT' : 'SAME'} from others");
+          } else {
+            log("❌ FAILED: No USER memory available for $idType: ${uniqueId.length > 20 ? uniqueId.substring(0, 20) + "..." : uniqueId}");
+          }
+        } catch (e) {
+          log("❌ EXCEPTION: Reading USER memory: $e");
+        }
+      }
+
       setState(() {
         _epcSet.add(epcHex);
-        _tagItems.insert(
-          0,
-          TagItem(
-            rawEpc: epcHex,
-            cage: decoded.cage,
-            partNumber: decoded.partNumber,
-            serialNumber: decoded.serialNumber,
-            userRead: false,
-          ),
-        );
-      });
+        _tidSet.add(uniqueId);
 
-      // İlk USER denemesi (basit, bloklamasız)
-      await _checkUserMemoryOnce(_tagItems.first);
+        final newTag = TagItem(
+          rawEpc: epcHex,
+          cage: decoded.cage,
+          partNumber: decoded.partNumber,
+          serialNumber: decoded.serialNumber,
+          tid: validTid && tid.isNotEmpty ? tid : null,
+          userRead: userHex != null && userHex.length >= 16,
+          userHex: userHex,
+        );
+
+        _tagItems.insert(0, newTag);
+
+        log("📝 TID-SCAN: Added tag to list:");
+        log("📝   EPC: $epcHex");
+        log("📝   TID: ${tid.isNotEmpty ? tid : 'EMPTY'}");
+        log("📝   Unique ID: ${newTag.uniqueId}");
+        log("📝   PN: ${decoded.partNumber}");
+        log("📝   SN: ${decoded.serialNumber}");
+        log("📝   CAGE: ${decoded.cage}");
+        log("📝   USER Read: ${newTag.userRead}");
+
+        // DEBUG: Show TID-to-USER mapping
+        log("📋 TID-DEBUG: Current TID-to-USER cache:");
+        _tidToUserMemory.forEach((tid, userMemory) {
+          final preview = userMemory.length >= 16
+              ? userMemory.substring(0, 16) + "..."
+              : userMemory;
+          log("📋   TID: ${tid.length > 16 ? tid.substring(0, 16) + "..." : tid} → USER: $preview");
+        });
+      });
     } catch (e) {
-      log("Error reading tag: $e");
+      log("❌ Error reading tag: $e");
     }
   }
 
   void _toggleScan() {
     if (!_isScanning) {
-      _scanTimer = Timer.periodic(const Duration(milliseconds: 400), (_) async {
+      _scanTimer = Timer.periodic(const Duration(milliseconds: 800), (_) async {
         if (_scanTickBusy) return;
         _scanTickBusy = true;
         try {
           await _readTag();
-          await _pollMissingUserMemoryDuringScan(maxPerTick: 2);
+          // TID-filtered USER memory reading integrated - no separate polling needed
         } finally {
           _scanTickBusy = false;
         }
       });
       setState(() => _isScanning = true);
+      log("🔍 SCAN-START: Started scanning with 800ms interval for stable detection");
     } else {
       _scanTimer?.cancel();
       _scanTimer = null;
       setState(() => _isScanning = false);
+      log("🔍 SCAN-STOP: Stopped scanning");
     }
   }
 
@@ -1490,7 +1594,10 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       _tagItems.clear();
       _epcSet.clear();
       _lastSeen.clear();
+      _tidSet.clear();
+      _tidToUserMemory.clear();
     });
+    log("📝 TID-SCAN: Cleared all lists and TID cache");
   }
 
   void _openDetail(TagItem item) {
@@ -1518,34 +1625,50 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   Future<void> _checkUserMemoryOnce(TagItem item) async {
     if (item.userRead == true) return;
     try {
+      log("SCAN: Calling FIXED readUserMemoryForEpc for EPC: ${item.rawEpc}");
+
+      // Longer delay for new single-tag verification approach
+      await Future.delayed(const Duration(milliseconds: 200));
+
       final hex = await RfidC72Plugin.readUserMemoryForEpc(item.rawEpc);
       if (!mounted) return;
+
       if (hex != null && hex.length >= 16) {
         setState(() {
           item.userHex = hex;
           item.userRead = true;
         });
+        log("SCAN: VERIFIED USER read for EPC: ${item.rawEpc}, first 32 chars: ${hex.substring(0, 32)}");
+      } else {
+        log("SCAN: USER read failed for EPC: ${item.rawEpc} - will retry in next round");
       }
     } catch (e) {
-      // ignore
+      log("SCAN: USER read error for EPC: ${item.rawEpc}: $e");
     }
   }
 
   Future<void> _pollMissingUserMemoryDuringScan({int maxPerTick = 2}) async {
     if (!_isScanning || _tagItems.isEmpty) return;
-    int checked = 0;
-    final total = _tagItems.length;
-    while (checked < maxPerTick) {
-      _umRoundRobinIndex = (_umRoundRobinIndex + 1) % total;
-      final item = _tagItems[_umRoundRobinIndex];
-      if (!item.userRead) {
-        await _checkUserMemoryOnce(item);
-        checked++;
-      } else {
-        checked++;
-      }
-      if (!_isScanning) break;
+
+    // Find items that need USER memory reading
+    final itemsNeedingUserMemory =
+        _tagItems.where((item) => !item.userRead).toList();
+    if (itemsNeedingUserMemory.isEmpty) {
+      log("SCAN: All tags have verified USER memory data");
+      return;
     }
+
+    // Process only one item every 2 scan cycles to reduce pressure on new verification approach
+    if (_umRoundRobinIndex % 2 == 0) {
+      final totalItems = itemsNeedingUserMemory.length;
+      final index = (_umRoundRobinIndex ~/ 2) % totalItems;
+      final item = itemsNeedingUserMemory[index];
+
+      log("SCAN: Processing USER verification for EPC: ${item.rawEpc} ($index/${totalItems})");
+      await _checkUserMemoryOnce(item);
+    }
+
+    _umRoundRobinIndex++;
   }
 
   /// EPC + USER verilerini Excel’e yazıp paylaş
@@ -1861,6 +1984,21 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _buildAtaFilterDropdown(),
+            ),
+            const SizedBox(height: 8),
+            // DIAGNOSTIC BUTTON
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const DiagnosticScreen(),
+                  ));
+                },
+                icon: const Icon(Icons.bug_report),
+                label: const Text('Test Individual Tags'),
+                style: TextButton.styleFrom(foregroundColor: Colors.orange),
+              ),
             ),
             const SizedBox(height: 8),
             _buildTagList(),

@@ -458,15 +458,20 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   void initState() {
     super.initState();
     _userHex = widget.userMemoryHex;
-    if (_userHex.isEmpty) {
-      _startAutoUserRead();
-    } else {
-      _decodeAndVerifyUserMemory(widget.tagItem.partNumber, _userHex);
-    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      log('DETAIL — PN:${widget.tagItem.partNumber} SN:${widget.tagItem.serialNumber} CAGE:${widget.tagItem.cage}');
+      log('DETAIL — EPC: ${widget.tagItem.rawEpc} | PN: ${widget.tagItem.partNumber} | SN: ${widget.tagItem.serialNumber} | CAGE: ${widget.tagItem.cage}');
+      log('DETAIL — Provided USER memory length: ${_userHex.length}');
     });
+
+    if (_userHex.isNotEmpty && _userHex.length >= 16) {
+      // Use provided user memory data directly without complex verification
+      _decodeAndVerifyUserMemory(widget.tagItem.partNumber, _userHex);
+    } else {
+      // Start auto-read only if no user memory data was provided
+      log('DETAIL — No valid USER memory provided, starting auto-read');
+      _startAutoUserRead();
+    }
   }
 
   @override
@@ -488,53 +493,25 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     if (_reading) return;
     _reading = true;
     try {
-      final Map<String, dynamic>? fields =
-          await RfidC72Plugin.readUserFieldsForEpc(widget.tagItem.rawEpc);
+      log('DETAIL: Attempting to read USER memory for EPC: ${widget.tagItem.rawEpc} (attempt $attempt)');
+      final String? rawHex =
+          await RfidC72Plugin.readUserMemoryForEpc(widget.tagItem.rawEpc);
 
-      if (fields != null && fields.isNotEmpty) {
-        final String serFromUser = (fields['SER'] ?? '').toString().trim();
-        final String mfr =
-            (fields['MFR'] ?? '').toString().trim().toUpperCase();
-        final String rawHex = fields['rawHex'] ?? '';
-        final String rawText = fields['rawText'] ?? '';
-
-        final String expectedSer = widget.tagItem.serialNumber.trim();
-        final String expectedCage = widget.tagItem.cage.trim().toUpperCase();
-        final String epcSerDigits = expectedSer.replaceAll(RegExp(r'\D'), '');
-        final String userSerDigits = serFromUser.replaceAll(RegExp(r'\D'), '');
-        final bool serMatch = userSerDigits.isNotEmpty &&
-            (epcSerDigits.endsWith(userSerDigits) ||
-                userSerDigits.endsWith(epcSerDigits) ||
-                epcSerDigits == userSerDigits);
-        final bool mfrMatch =
-            (mfr.isEmpty || expectedCage.isEmpty) || (mfr == expectedCage);
-
-        log('DETAIL USER fields (try $attempt) => SER=$serFromUser rawText="$rawText" serMatch=$serMatch mfrMatch=$mfrMatch');
-
-        if (serMatch && mfrMatch) {
-          if (!mounted) return;
-          setState(() {
-            _userHex = rawHex;
-            _autoFetch = false; // Found and verified -> stop polling
-            // Persist back to list item so it stays green on return
-            widget.tagItem.userHex = rawHex;
-            widget.tagItem.userRead = true;
-          });
-          _umTimer?.cancel();
-          return;
-        } else if (attempt < 3) {
-          await Future.delayed(const Duration(milliseconds: 200));
-          _tryReadUser(attempt: attempt + 1);
-        } else {
-          if (!mounted) return;
-          setState(() {
-            _userHex = rawHex;
-            _autoFetch = false;
-          });
-          _umTimer?.cancel();
-        }
+      if (!mounted) return;
+      if (rawHex != null && rawHex.length >= 16) {
+        setState(() {
+          _userHex = rawHex;
+          _autoFetch = false; // Found -> stop polling
+          // Persist back to list item so it stays green on return
+          widget.tagItem.userHex = rawHex;
+          widget.tagItem.userRead = true;
+        });
+        _umTimer?.cancel();
+        log('DETAIL: USER read success for EPC: ${widget.tagItem.rawEpc}, data length: ${rawHex.length}');
+        return;
       } else if (attempt < 3) {
-        await Future.delayed(const Duration(milliseconds: 200));
+        log('DETAIL: USER read attempt $attempt failed, retrying...');
+        await Future.delayed(const Duration(milliseconds: 500));
         _tryReadUser(attempt: attempt + 1);
       } else {
         if (!mounted) return;
@@ -543,11 +520,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           _autoFetch = false;
         });
         _umTimer?.cancel();
+        log('DETAIL: USER read failed after $attempt attempts for EPC: ${widget.tagItem.rawEpc}');
       }
     } catch (e) {
-      log('Error reading user fields: $e');
+      log('DETAIL: Error reading user memory for EPC ${widget.tagItem.rawEpc}: $e');
       if (attempt < 3) {
-        await Future.delayed(const Duration(milliseconds: 200));
+        await Future.delayed(const Duration(milliseconds: 500));
         _tryReadUser(attempt: attempt + 1);
       } else {
         if (!mounted) return;
@@ -563,29 +541,20 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   }
 
   void _decodeAndVerifyUserMemory(String epcPartNumber, String userHex) async {
+    // Always accept user memory data that was passed from scan screen
+    // This prevents mixing up user memory between different tags
+    log('DETAIL: Using provided user memory data for EPC: ${widget.tagItem.rawEpc}');
+    setState(() {
+      _userHex = userHex;
+      widget.tagItem.userHex = userHex;
+      widget.tagItem.userRead = true;
+    });
+
+    // Optional: Log decoded data for debugging
     final Map<String, dynamic> decoded = decodeUserMemory(userHex);
     final String serFromUser = (decoded['SER'] ?? '').toString().trim();
     final String mfr = (decoded['MFR'] ?? '').toString().trim().toUpperCase();
-    final String expectedSer = widget.tagItem.serialNumber.trim();
-    final String expectedCage = widget.tagItem.cage.trim().toUpperCase();
-    final String epcSerDigits = expectedSer.replaceAll(RegExp(r'\D'), '');
-    final String userSerDigits = serFromUser.replaceAll(RegExp(r'\D'), '');
-    final bool serMatch = userSerDigits.isNotEmpty &&
-        (epcSerDigits.endsWith(userSerDigits) ||
-            userSerDigits.endsWith(epcSerDigits) ||
-            epcSerDigits == userSerDigits);
-    final bool mfrMatch =
-        (mfr.isEmpty || expectedCage.isEmpty) || (mfr == expectedCage);
-
-    if (serMatch && mfrMatch) {
-      setState(() {
-        _userHex = userHex;
-        widget.tagItem.userHex = userHex;
-        widget.tagItem.userRead = true;
-      });
-    } else {
-      _startAutoUserRead();
-    }
+    log('DETAIL: User memory contains - SER: $serFromUser, MFR: $mfr');
   }
 
   // ---------------- LOCATE + SOUND ----------------
@@ -594,8 +563,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     setState(() => _locatingBusy = true);
     try {
       if (!_isLocating) {
+        final epcToFind = widget.tagItem.rawEpc;
+        log('DETAIL Starting location for EPC: $epcToFind (PN: ${widget.tagItem.partNumber}, SN: ${widget.tagItem.serialNumber})');
         final ok = await RfidC72Plugin.startLocation(
-          label: widget.tagItem.rawEpc,
+          label: epcToFind,
           bank: 1,
           ptr: 32,
         );
@@ -619,7 +590,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   }
 
   void _subscribeLocate() {
-    _locSub ??= _locationStatusChannel.receiveBroadcastStream().listen((event) {
+    if (_locSub != null) return; // Already subscribed
+    _locSub = _locationStatusChannel.receiveBroadcastStream().listen((event) {
       final int? s = event is int ? event : int.tryParse(event.toString());
       _rescheduleForSignal(s);
     }, onError: (_) {
@@ -629,7 +601,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   }
 
   void _unsubscribeLocate() {
-    _locSub?.cancel();
+    if (_locSub == null) return; // Already unsubscribed
+    try {
+      _locSub!.cancel();
+    } catch (e) {
+      // Ignore cancellation errors
+      log('EventChannel cancel error: $e');
+    }
     _locSub = null;
   }
 
@@ -988,7 +966,8 @@ class _LocationStatusWidgetState extends State<LocationStatusWidget> {
   int? _signalStrength;
 
   void _subscribe() {
-    _locationSub ??= _locationStatusChannel.receiveBroadcastStream().listen(
+    if (_locationSub != null) return; // Already subscribed
+    _locationSub = _locationStatusChannel.receiveBroadcastStream().listen(
       (event) {
         setState(() {
           _signalStrength =
@@ -1000,7 +979,12 @@ class _LocationStatusWidgetState extends State<LocationStatusWidget> {
   }
 
   void _unsubscribe() {
-    _locationSub?.cancel();
+    if (_locationSub == null) return; // Already unsubscribed
+    try {
+      _locationSub!.cancel();
+    } catch (e) {
+      // Ignore cancellation errors
+    }
     _locationSub = null;
   }
 

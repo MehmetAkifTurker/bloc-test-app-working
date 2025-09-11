@@ -279,6 +279,18 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 break;
             }
 
+            case "readSingleTagWithTid": {
+                String tagInfo = UHFHelper.getInstance().readSingleTagWithTid();
+                result.success(tagInfo);
+                break;
+            }
+
+            case "diagnosticReadSingleTag": {
+                String diagnostic = UHFHelper.getInstance().diagnosticReadSingleTag();
+                result.success(diagnostic);
+                break;
+            }
+
             case "writeAtaUserMemoryWithPayload": {
                 String manufacturer = call.argument("manufacturer");
                 String productName = call.argument("productName"); // null olabilir
@@ -304,7 +316,7 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
 
             case "readUserMemoryForEpc": {
                 String epc = call.argument("epc");
-                String userMemory = UHFHelper.getInstance().readUserMemoryForEpc(epc);
+                String userMemory = UHFHelper.getInstance().readUserMemoryForEpcStrict(epc);
                 result.success(userMemory);
                 break;
             }
