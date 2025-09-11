@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "850006190065",
+    "project_id": "bootstrap-rfid",
+    "storage_bucket": "bootstrap-rfid.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:850006190065:android:57bec094944e15a5dcc650",
+        "android_client_info": {
+          "package_name": "com.example.water_boiler_rfid_labeler"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAUA76FUe6A9J5q1ObUNaqGb83NkCw3C1U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:850006190065:android:36eb2653d89cf90cdcc650",
+        "android_client_info": {
+          "package_name": "com.example.rfid_c72_plugin_example"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAUA76FUe6A9J5q1ObUNaqGb83NkCw3C1U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

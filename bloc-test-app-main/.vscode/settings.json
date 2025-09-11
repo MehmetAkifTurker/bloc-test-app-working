@@ -1,0 +1,13 @@
+{
+   "editor.defaultFormatter": "Dart-Code.dart-code",
+   "editor.formatOnSave": true,
+   "java.configuration.updateBuildConfiguration": "automatic",
+   "java.project.sourcePaths": [
+      "my_rfid_plugin"
+   ],
+   "java.import.gradle.java.home": "",
+   "cmake.sourceDirectory": "C:/Users/A_TURKER/Desktop/water_boiler_rfid_labeler/linux",
+   "[java]": {
+      "editor.defaultFormatter": "redhat.java"
+   }
+}

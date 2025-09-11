@@ -1,0 +1,3 @@
+rootProject.name = 'my_rfid_plugin'
+
+include ':app',':libs'
