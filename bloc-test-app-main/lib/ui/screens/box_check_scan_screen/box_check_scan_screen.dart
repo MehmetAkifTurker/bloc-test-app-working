@@ -1533,10 +1533,10 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
         _tidSet.add(uniqueId);
 
         final newTag = TagItem(
-          rawEpc: epcHex,
-          cage: decoded.cage,
-          partNumber: decoded.partNumber,
-          serialNumber: decoded.serialNumber,
+            rawEpc: epcHex,
+            cage: decoded.cage,
+            partNumber: decoded.partNumber,
+            serialNumber: decoded.serialNumber,
           tid: validTid && tid.isNotEmpty ? tid : null,
           userRead: userHex != null && userHex.length >= 16,
           userHex: userHex,
@@ -1616,9 +1616,6 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       if (updated == true && mounted) {
         setState(() {}); // reflect any userHex/userRead updates
       }
-      if (wasScanning && !_isScanning) {
-        _toggleScan(); // resume
-      }
     });
   }
 
@@ -1665,8 +1662,8 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       final item = itemsNeedingUserMemory[index];
 
       log("SCAN: Processing USER verification for EPC: ${item.rawEpc} ($index/${totalItems})");
-      await _checkUserMemoryOnce(item);
-    }
+        await _checkUserMemoryOnce(item);
+      }
 
     _umRoundRobinIndex++;
   }

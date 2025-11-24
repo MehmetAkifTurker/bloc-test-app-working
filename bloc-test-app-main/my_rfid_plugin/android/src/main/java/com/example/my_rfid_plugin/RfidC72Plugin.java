@@ -297,13 +297,15 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 String partNumber = call.argument("partNumber");
                 String serialNumber = call.argument("serialNumber");
                 String manufactureDate = call.argument("manufactureDate");
+                String expireDate = call.argument("expireDate");
 
                 boolean ok = UHFHelper.getInstance().writeAtaUserMemoryWithPayload(
                         manufacturer != null ? manufacturer : "",
                         productName != null ? productName : "",
                         partNumber != null ? partNumber : "",
                         serialNumber != null ? serialNumber : "",
-                        manufactureDate != null ? manufactureDate : "");
+                        manufactureDate != null ? manufactureDate : "",
+                        expireDate != null ? expireDate : "");
                 result.success(ok);
                 break;
             }

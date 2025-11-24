@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:water_boiler_rfid_labeler/java_comm/rfid_c72_plugin.dart';
 
 class DiagnosticScreen extends StatefulWidget {
-  const DiagnosticScreen({Key? key}) : super(key: key);
+  const DiagnosticScreen({super.key});
 
   @override
   State<DiagnosticScreen> createState() => _DiagnosticScreenState();

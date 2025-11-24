@@ -434,6 +434,81 @@ const Map<int, String> kAtaClassNames = {
   60: 'Other Non-Flyable Equipment',
 };
 
+const Map<int, String> kAtaTagTypeNames = {
+  0x0000: 'Multi-Record',
+  0x0001: 'Dual-Record',
+  0x0002: 'Single Birth Record',
+  0x000A: 'Single Utility Record',
+};
+
+const List<String> kAtaUserFieldOrder = [
+  'MFR',
+  'CAG',
+  'SPL',
+  'SER',
+  'SEQ',
+  'UCN',
+  'PNR',
+  'PNO',
+  'UIC',
+  'DMF',
+  'EXP',
+  'PDT',
+  'ESD',
+  'LLE',
+  'ICC',
+  'LOT',
+  'LTN',
+  'CNT',
+  'WGT',
+  'UNT',
+  'HAZ',
+  'ECC',
+  'SWI',
+  'TDN',
+  'NSN',
+  'FAB',
+  'DOH',
+  'DNH',
+  'OVD',
+  'OMM',
+];
+
+const Map<String, String> kAtaUserFieldLabels = {
+  'MFR': 'Manufacturer',
+  'CAG': 'CAGE Code',
+  'SPL': 'Supplier Code',
+  'SER': 'Serial Number',
+  'SEQ': 'Serial Sequence',
+  'UCN': 'Unique Component Number',
+  'PNR': 'Current Part Number',
+  'PNO': 'Original Part Number',
+  'UIC': 'UID Construct Number',
+  'DMF': 'Manufacture Date',
+  'EXP': 'Expiration Date',
+  'PDT': 'Part Description',
+  'ESD': 'ESD Indicator',
+  'LLE': 'Life Limited Indicator',
+  'ICC': 'Commodity Code',
+  'LOT': 'Lot Number',
+  'LTN': 'Lot Number',
+  'CNT': 'Country of Manufacture',
+  'WGT': 'Original Weight',
+  'UNT': 'Unit of Measure',
+  'HAZ': 'Hazardous Material Code',
+  'ECC': 'Export Control Classification',
+  'SWI': 'Software Indicator',
+  'TDN': 'Certificate Tracking Number',
+  'NSN': 'NATO Stock Number',
+  'FAB': 'Fabricator',
+  'DOH': 'Last Hydrostatic Test',
+  'DNH': 'Next Hydrostatic Test',
+  'OVD': 'Last Overhaul Date',
+  'OMM': 'Original Equipment Manufacturer',
+};
+
+const Set<String> _kDateKeys = {'DMF', 'EXP', 'DOH', 'DNH', 'OVD'};
+
 class _TagDetailScreenState extends State<TagDetailScreen> {
   // Locate / ses
   bool _isLocating = false;
@@ -453,6 +528,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   StreamSubscription? _locSub;
   Timer? _beepTimer;
   Duration _currentPeriod = const Duration(milliseconds: 900);
+  int? _latestSignal;
 
   @override
   void initState() {
@@ -549,12 +625,75 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       widget.tagItem.userHex = userHex;
       widget.tagItem.userRead = true;
     });
+    if (userHex.isNotEmpty) {
+      final int words = userHex.length ~/ 4;
+      log('DETAIL: USER raw hex ($words words) => $userHex');
+    }
 
     // Optional: Log decoded data for debugging
     final Map<String, dynamic> decoded = decodeUserMemory(userHex);
-    final String serFromUser = (decoded['SER'] ?? '').toString().trim();
-    final String mfr = (decoded['MFR'] ?? '').toString().trim().toUpperCase();
+    final dynamic fieldsDynamic = decoded['fields'];
+    String serFromUser = '';
+    String mfr = '';
+    if (fieldsDynamic is Map) {
+      serFromUser =
+          (fieldsDynamic['SER'] ?? decoded['SER'] ?? '').toString().trim();
+      mfr = (fieldsDynamic['MFR'] ?? decoded['MFR'] ?? '')
+          .toString()
+          .trim()
+          .toUpperCase();
+      log('DETAIL: USER TEI fields => $fieldsDynamic');
+    } else {
+      serFromUser = (decoded['SER'] ?? '').toString().trim();
+      mfr = (decoded['MFR'] ?? '').toString().trim().toUpperCase();
+    }
     log('DETAIL: User memory contains - SER: $serFromUser, MFR: $mfr');
+
+    final toc = decoded['tocHeader'];
+    final String descriptorHex =
+        decoded['recordDescriptorHex']?.toString() ?? '';
+    final String payloadHex = decoded['payloadHex']?.toString() ?? '';
+    final int actualWords = userHex.length ~/ 4;
+    final int payloadWords = payloadHex.length ~/ 4;
+    int? expectedWords;
+    int? descriptorWords;
+    if (toc is Map) {
+      expectedWords = int.tryParse('${toc['ataMemoryWords']}');
+      descriptorWords = int.tryParse('${toc['recordDescriptorWords']}');
+    }
+    final wordsSummary = expectedWords == null
+        ? '$actualWords words read'
+        : '$actualWords / $expectedWords words read';
+    log('DETAIL: USER length => $wordsSummary (payload: $payloadWords words)');
+    if (descriptorWords != null) {
+      log('DETAIL: Record descriptor words per header: $descriptorWords');
+    }
+    if (expectedWords != null && actualWords < expectedWords) {
+      log('DETAIL ⚠️ USER data appears truncated — missing ${expectedWords - actualWords} words');
+    }
+    if (descriptorHex.isNotEmpty) {
+      log('DETAIL: RD hex full (${descriptorHex.length ~/ 4} words) => $descriptorHex');
+    }
+    if (payloadHex.isNotEmpty) {
+      log('DETAIL: Payload hex full (${payloadHex.length ~/ 4} words) => $payloadHex');
+    }
+    if (toc is Map) {
+      log('DETAIL: ToC header => version ${toc['tocMajorVersion']}.${toc['tocMinorVersion']}, '
+          'tagType=${toc['ataTagType']} (${toc['ataTagTypeLabel'] ?? 'n/a'}), '
+          'class=${toc['ataClass']} (${toc['ataClassLabel'] ?? 'n/a'}), flags=${toc['flags'] ?? {}}');
+    }
+    final records = decoded['records'];
+    if (records is List) {
+      for (final record in records) {
+        if (record is! Map) continue;
+        final descriptor = record['descriptor'];
+        final typeLabel = descriptor is Map
+            ? (descriptor['recordTypeLabel'] ?? descriptor['recordType'])
+            : 'unknown';
+        final payloadText = (record['payloadText'] ?? '').toString();
+        log('DETAIL: Record $typeLabel payload => $payloadText');
+      }
+    }
   }
 
   // ---------------- LOCATE + SOUND ----------------
@@ -591,6 +730,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
   void _subscribeLocate() {
     if (_locSub != null) return; // Already subscribed
+    setState(() => _latestSignal = null);
     _locSub = _locationStatusChannel.receiveBroadcastStream().listen((event) {
       final int? s = event is int ? event : int.tryParse(event.toString());
       _rescheduleForSignal(s);
@@ -609,6 +749,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       log('EventChannel cancel error: $e');
     }
     _locSub = null;
+    if (mounted) {
+      setState(() => _latestSignal = null);
+    } else {
+      _latestSignal = null;
+    }
   }
 
   Duration _periodFor(int? s) {
@@ -622,9 +767,18 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
   void _rescheduleForSignal(int? s) {
     final next = _periodFor(s);
-    if (next.inMilliseconds != _currentPeriod.inMilliseconds) {
+    final bool periodChanged =
+        next.inMilliseconds != _currentPeriod.inMilliseconds;
+    if (periodChanged) {
       _currentPeriod = next;
       _restartBeepTimer();
+    }
+    if (_latestSignal != s) {
+      if (mounted) {
+        setState(() => _latestSignal = s);
+      } else {
+        _latestSignal = s;
+      }
     }
   }
 
@@ -640,7 +794,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     _stopBeepTimer();
     _beepTimer = Timer.periodic(_currentPeriod, (_) async {
       try {
-        await SystemSound.play(SystemSoundType.alert);
+        await RfidC72Plugin.playSound;
       } catch (_) {}
     });
   }
@@ -652,20 +806,20 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
   // ----------------- UI HELPERS -----------------
   Map<String, String> _parsePayloadFields(String text) {
-    final Map<String, String> fields = {};
-    for (final part in text.split('*')) {
-      final p = part.trim();
-      if (p.isEmpty) continue;
-      final sp = p.indexOf(' ');
-      if (sp <= 0) continue;
-      final key = p.substring(0, sp).trim();
-      final val = p.substring(sp + 1).trim();
-      fields[key] = val;
+    final fields = <String, String>{};
+    final sanitized = text.replaceAll('\n', ' ').trim();
+    final reg = RegExp(r'([A-Z0-9]{3,5})\s+([^*]+)');
+    for (final match in reg.allMatches(sanitized)) {
+      final key = match.group(1)?.trim().toUpperCase();
+      final value = match.group(2)?.trim();
+      if (key == null || key.isEmpty || value == null || value.isEmpty)
+        continue;
+      fields[key] = value;
     }
     return fields;
   }
 
-  String _formatDmf(String v) {
+  String _formatDateString(String v) {
     // If already contains non-digits (e.g., slashes), keep as-is
     if (RegExp(r'[^0-9]').hasMatch(v)) return v;
     // YYYYMMDD
@@ -681,13 +835,23 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     return v;
   }
 
-  Widget _payloadBox(String text) {
-    final f = _parsePayloadFields(text);
+  String _formatAtaValue(String key, String value) {
+    if (_kDateKeys.contains(key)) return _formatDateString(value);
+    return value;
+  }
+
+  Widget _payloadBox(Map<String, String> providedFields, String text) {
+    final Map<String, String> f =
+        providedFields.isNotEmpty ? providedFields : _parsePayloadFields(text);
     final List<Widget> lines = [];
-    void add(String labelKey, String uiLabel) {
-      final v = f[labelKey];
+    final Set<String> seen = {};
+
+    void add(String key) {
+      final v = f[key]?.trim();
       if (v == null || v.isEmpty) return;
-      final shown = labelKey == 'DMF' ? _formatDmf(v) : v;
+      if (!seen.add(key)) return;
+      final shown = _formatAtaValue(key, v);
+      final uiLabel = kAtaUserFieldLabels[key] ?? key;
       lines.add(Padding(
         padding: const EdgeInsets.only(bottom: 6),
         child: Row(
@@ -710,14 +874,30 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       ));
     }
 
-    add('MFR', 'Manufacturer');
-    add('PDT', 'Item Description');
-    add('PNR', 'Part Number');
-    add('SER', 'Serial Number');
-    add('DMF', 'Manufacture Date');
-    add('UIC', 'UIC');
+    for (final key in kAtaUserFieldOrder) {
+      add(key);
+    }
 
-    if (lines.isEmpty) return const SizedBox.shrink();
+    final extraKeys = f.keys.where((key) => !seen.contains(key)).toList()
+      ..sort();
+    for (final key in extraKeys) {
+      add(key);
+    }
+
+    if (lines.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Text(
+          text.isEmpty ? '-' : text,
+          style: const TextStyle(fontSize: 14, height: 1.25),
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -811,11 +991,37 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     final epcDecoded = decodeEpc(widget.tagItem.rawEpc);
     final epcFilter = epcDecoded.filterValue;
     final epcFilterName = kAtaClassNames[epcFilter];
+    final filterLabel =
+        epcFilterName == null ? '$epcFilter' : '$epcFilter — $epcFilterName';
+    final manufacturerFromEpc = epcDecoded.cage.trim().isEmpty
+        ? widget.tagItem.cage.trim()
+        : epcDecoded.cage.trim();
+    final partNumberFromEpc = epcDecoded.partNumber.isNotEmpty
+        ? epcDecoded.partNumber
+        : widget.tagItem.partNumber;
+    final serialNumberFromEpc = epcDecoded.serialNumber.isNotEmpty
+        ? epcDecoded.serialNumber
+        : widget.tagItem.serialNumber;
 
     final payloadText = decodedUser['payloadText']?.toString() ?? '';
+    final Map<String, String> decodedFields = {};
+    final rawFields = decodedUser['fields'];
+    if (rawFields is Map) {
+      for (final entry in rawFields.entries) {
+        final key = entry.key?.toString().toUpperCase();
+        final value = entry.value?.toString().trim();
+        if (key != null &&
+            key.isNotEmpty &&
+            value != null &&
+            value.isNotEmpty) {
+          decodedFields[key] = value;
+        }
+      }
+    }
+
+    final hasPayload = payloadText.isNotEmpty || decodedFields.isNotEmpty;
     final epcText = widget.tagItem.rawEpc;
     final userText = _userHex;
-
     return Scaffold(
       appBar: commonAppBar(
         context,
@@ -830,9 +1036,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         children: [
           Row(
             children: [
-              _chip('PN', widget.tagItem.partNumber),
+              _chip('PN', partNumberFromEpc),
               const SizedBox(width: 12),
-              _chip('SN', widget.tagItem.serialNumber),
+              _chip('SN', serialNumberFromEpc),
             ],
           ),
           const SizedBox(height: 16),
@@ -861,11 +1067,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
                             fontWeight: FontWeight.w700,
                             color: Colors.grey.shade700)),
                     const SizedBox(width: 6),
-                    Text(
-                      epcFilterName == null
-                          ? '$epcFilter'
-                          : '$epcFilter — $epcFilterName',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    Expanded(
+                      child: Text(
+                        filterLabel,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
@@ -877,8 +1085,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
                             fontWeight: FontWeight.w700,
                             color: Colors.grey.shade700)),
                     const SizedBox(width: 6),
-                    Text(widget.tagItem.cage,
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Expanded(
+                      child: Text(
+                        manufacturerFromEpc,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -886,14 +1100,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           ),
 
           const SizedBox(height: 16),
-          if (payloadText.isNotEmpty) ...[
+          if (hasPayload) ...[
             Text('User Memory Payload',
                 style: TextStyle(
                     fontSize: 13,
                     color: Colors.grey.shade700,
                     fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            _payloadBox(payloadText),
+            _payloadBox(decodedFields, payloadText),
           ],
 
           const SizedBox(height: 16),
@@ -943,74 +1157,22 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          LocationStatusWidget(isLocating: _isLocating),
+          LocationStatusWidget(
+            isLocating: _isLocating,
+            signalStrength: _latestSignal,
+          ),
         ],
       ),
     );
   }
 }
 
-/// Basit sinyal göstergesi — EventChannel('LocationStatus') ile 0..100 benzeri bir değer bekler
-class LocationStatusWidget extends StatefulWidget {
+/// Basit sinyal göstergesi — değer üst widget tarafından sağlanır
+class LocationStatusWidget extends StatelessWidget {
   final bool isLocating;
-  const LocationStatusWidget({super.key, required this.isLocating});
-
-  @override
-  State<LocationStatusWidget> createState() => _LocationStatusWidgetState();
-}
-
-class _LocationStatusWidgetState extends State<LocationStatusWidget> {
-  static const EventChannel _locationStatusChannel =
-      EventChannel('LocationStatus');
-  StreamSubscription? _locationSub;
-  int? _signalStrength;
-
-  void _subscribe() {
-    if (_locationSub != null) return; // Already subscribed
-    _locationSub = _locationStatusChannel.receiveBroadcastStream().listen(
-      (event) {
-        setState(() {
-          _signalStrength =
-              event is int ? event : int.tryParse(event.toString());
-        });
-      },
-      onError: (_) => setState(() => _signalStrength = null),
-    );
-  }
-
-  void _unsubscribe() {
-    if (_locationSub == null) return; // Already unsubscribed
-    try {
-      _locationSub!.cancel();
-    } catch (e) {
-      // Ignore cancellation errors
-    }
-    _locationSub = null;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.isLocating) _subscribe();
-  }
-
-  @override
-  void didUpdateWidget(covariant LocationStatusWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isLocating && !oldWidget.isLocating) {
-      _signalStrength = null;
-      _subscribe();
-    } else if (!widget.isLocating && oldWidget.isLocating) {
-      _unsubscribe();
-      _signalStrength = null;
-    }
-  }
-
-  @override
-  void dispose() {
-    _unsubscribe();
-    super.dispose();
-  }
+  final int? signalStrength;
+  const LocationStatusWidget(
+      {super.key, required this.isLocating, required this.signalStrength});
 
   int getBarLevel(int? v) {
     if (v == null) return 0;
@@ -1036,9 +1198,9 @@ class _LocationStatusWidgetState extends State<LocationStatusWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final int activeLevel = getBarLevel(_signalStrength);
+    final int activeLevel = getBarLevel(signalStrength);
 
-    if (!widget.isLocating) {
+    if (!isLocating) {
       return const Card(
         margin: EdgeInsets.all(8),
         child: ListTile(
@@ -1048,11 +1210,11 @@ class _LocationStatusWidgetState extends State<LocationStatusWidget> {
       );
     }
 
-    final String subtitleText = _signalStrength == null
+    final String subtitleText = signalStrength == null
         ? 'Searching...'
-        : 'Signal Strength: $_signalStrength';
+        : 'Signal Strength: $signalStrength';
 
-    final TextStyle subtitleStyle = _signalStrength == null
+    final TextStyle subtitleStyle = signalStrength == null
         ? const TextStyle(color: Colors.orange)
         : TextStyle(
             fontWeight: FontWeight.w600, color: getBarColor(activeLevel, 3));

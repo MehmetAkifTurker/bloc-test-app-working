@@ -266,7 +266,7 @@ import 'package:water_boiler_rfid_labeler/java_comm/rfid_c72_plugin.dart';
 import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
 
 class QrScanScreen extends StatefulWidget {
-  const QrScanScreen({Key? key}) : super(key: key);
+  const QrScanScreen({super.key});
 
   @override
   State<QrScanScreen> createState() => _QrScanScreenState();
@@ -275,7 +275,7 @@ class QrScanScreen extends StatefulWidget {
 class _QrScanScreenState extends State<QrScanScreen> {
   bool _connected = false;
   bool _scanning = false;
-  bool _continuous = true;
+  final bool _continuous = true;
   late final StreamSubscription<String> _sub;
 
   String _last = '';

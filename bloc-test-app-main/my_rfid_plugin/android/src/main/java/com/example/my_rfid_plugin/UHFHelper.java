@@ -31,6 +31,9 @@ public class UHFHelper {
 
     private static UHFHelper instance;
 
+    private static final int MAX_USER_WORDS = 256;
+    private static final int MIN_USER_WORDS = 4;
+
     private UHFHelper() {
     } // Singleton
 
@@ -395,25 +398,42 @@ public class UHFHelper {
                         int tidBits = tid.length() * 4; // Convert hex chars to bits
                         Log.i(TAG, "🔍 TID-FILTER: Filtering by TID - " + tid + " (" + tidBits + " bits)");
 
+                        int totalWords = peekUserWordsWithTidFilter(tid, tidBits);
                         userMemory = mReader.readData("00000000",
                                 RFIDWithUHFUART.Bank_TID, 0, tidBits, tid, // Filter by TID
-                                RFIDWithUHFUART.Bank_USER, 0, 32); // Read USER
+                                RFIDWithUHFUART.Bank_USER, 0, totalWords); // Read USER
 
                         if (userMemory != null && userMemory.length() >= 16) {
+                            int wordsRead = userMemory.length() / 4;
                             Log.i(TAG,
                                     "✅ TID-FILTER: SUCCESS! Got USER memory for TID " + tid.substring(0, 8) + "...: " +
                                             userMemory.substring(0, Math.min(32, userMemory.length())) + "...");
+                            if (wordsRead < totalWords) {
+                                Log.w(TAG, "🔍 TID-FILTER: USER data truncated? read=" + wordsRead + " expected="
+                                        + totalWords);
+                            }
                         } else {
                             Log.w(TAG, "❌ TID-FILTER: Failed, trying direct read as fallback");
-                            userMemory = mReader.readData("00000000", RFIDWithUHFUART.Bank_USER, 0, 32);
+                            String header = mReader.readData("00000000", RFIDWithUHFUART.Bank_USER, 0, 4);
+                            int fallbackWords = parseUserWordCount(header);
+                            Log.i(TAG, "🔄 DIRECT-FALLBACK header peek => " + (header != null ? header : "null")
+                                    + " (" + fallbackWords + " words)");
+                            userMemory = mReader.readData("00000000", RFIDWithUHFUART.Bank_USER, 0, fallbackWords);
                             if (userMemory != null && userMemory.length() >= 16) {
                                 Log.i(TAG, "🔄 DIRECT-FALLBACK: Got USER via direct read: "
                                         + userMemory.substring(0, Math.min(32, userMemory.length())) + "...");
+                                int wordsRead = userMemory.length() / 4;
+                                if (wordsRead < fallbackWords) {
+                                    Log.w(TAG, "🔄 DIRECT-FALLBACK: USER data truncated? read=" + wordsRead
+                                            + " expected=" + fallbackWords);
+                                }
                             }
                         }
                     } else {
                         Log.w(TAG, "❌ TID-FILTER: Invalid TID, using direct read");
-                        userMemory = mReader.readData("00000000", RFIDWithUHFUART.Bank_USER, 0, 32);
+                        String header = mReader.readData("00000000", RFIDWithUHFUART.Bank_USER, 0, 4);
+                        int fallbackWords = parseUserWordCount(header);
+                        userMemory = mReader.readData("00000000", RFIDWithUHFUART.Bank_USER, 0, fallbackWords);
                     }
                 } catch (Exception e) {
                     Log.w(TAG, "❌ TID-FILTER: Exception: " + e.getMessage());
@@ -703,7 +723,7 @@ public class UHFHelper {
             int sp = part.indexOf(' ');
             if (sp <= 0)
                 continue;
-            String key = part.substring(0, sp).trim(); // MFR/PNR/SER/DMF/PDT/UIC...
+            String key = part.substring(0, sp).trim(); // MFR/PNR/SER/DMF/EXP/PDT/UIC...
             String val = part.substring(sp + 1).trim();
             res.put(key, val);
         }
@@ -764,6 +784,7 @@ public class UHFHelper {
             obj.put("PNR", fields.getOrDefault("PNR", ""));
             obj.put("SER", fields.getOrDefault("SER", ""));
             obj.put("DMF", fields.getOrDefault("DMF", ""));
+            obj.put("EXP", fields.getOrDefault("EXP", ""));
             obj.put("UIC", fields.getOrDefault("UIC", ""));
             return obj.toString();
         } catch (Exception e) {
@@ -865,7 +886,7 @@ public class UHFHelper {
 
     public boolean writeAtaUserMemoryWithPayload(
             String manufacturer, String productName, String partNumber,
-            String serialNumber, String manufactureDate) {
+            String serialNumber, String manufactureDate, String expireDate) {
         if (mReader == null) {
             Log.e(TAG, "mReader is null; cannot write User Memory header!");
             return false;
@@ -883,6 +904,8 @@ public class UHFHelper {
                 payloadBuilder.append("*SER ").append(serialNumber);
             if (manufactureDate != null && !manufactureDate.isEmpty())
                 payloadBuilder.append("*DMF ").append(manufactureDate);
+            if (expireDate != null && !expireDate.isEmpty())
+                payloadBuilder.append("*EXP ").append(expireDate);
             payloadBuilder.append("*UIC 2");
 
             // Remove leading "*" if present (optional)
@@ -1124,12 +1147,23 @@ public class UHFHelper {
                         if (epcHex.equalsIgnoreCase(foundEpc)) {
                             Log.i(TAG, "EXACT MATCH! Reading USER memory for verified tag...");
 
+                            String headerHex = mReader.readData(accessPwd, RFIDWithUHFUART.Bank_USER, 0, 4);
+                            int totalWords = parseUserWordCount(headerHex);
+                            Log.i(TAG, "USER header peek (" + totalWords + " words) => "
+                                    + (headerHex != null ? headerHex : "null"));
+
                             // Read immediately while tag is detected
-                            String userHex = mReader.readData(accessPwd, RFIDWithUHFUART.Bank_USER, 0, 32);
+                            String userHex = mReader.readData(accessPwd, RFIDWithUHFUART.Bank_USER, 0, totalWords);
 
                             if (userHex != null && userHex.length() >= 16) {
-                                Log.i(TAG, "SUCCESS: Verified USER read for " + epcHex + " = "
+                                int wordsRead = userHex.length() / 4;
+                                Log.i(TAG, "SUCCESS: Verified USER read for " + epcHex + " (" + wordsRead
+                                        + " words) preview="
                                         + userHex.substring(0, Math.min(32, userHex.length())));
+                                if (headerHex != null && headerHex.length() >= 16 && wordsRead < totalWords) {
+                                    Log.w(TAG, "USER data appears truncated! expected=" + totalWords + " got="
+                                            + wordsRead);
+                                }
                                 return userHex;
                             } else {
                                 Log.w(TAG, "USER memory was empty for matched EPC, retrying...");
@@ -1217,7 +1251,7 @@ public class UHFHelper {
             } catch (Exception ignore) {
                 totalWords = 32; // safe default
             }
-            totalWords = Math.min(totalWords, 64); // safety limit
+            totalWords = clampUserWords(totalWords);
 
             Log.i(TAG, "🔧 STRICT: USER header OK, reading " + totalWords + " words");
 
@@ -1226,8 +1260,12 @@ public class UHFHelper {
                     epcHex, RFIDWithUHFUART.Bank_EPC, 32, epcBits);
 
             if (allUserData != null && allUserData.length() >= 16) {
+                int wordsRead = allUserData.length() / 4;
                 Log.i(TAG, "✅ STRICT: SUCCESS for " + epcHex.substring(0, 8) + "... → " +
                         allUserData.substring(0, Math.min(32, allUserData.length())) + "...");
+                if (wordsRead < totalWords) {
+                    Log.w(TAG, "🔧 STRICT: USER data truncated? read=" + wordsRead + " expected=" + totalWords);
+                }
                 return allUserData;
             } else {
                 Log.w(TAG, "❌ STRICT: Empty USER data for " + epcHex);
@@ -1254,6 +1292,37 @@ public class UHFHelper {
                 } catch (Exception ignore) {
                 }
             }
+        }
+    }
+
+    private int parseUserWordCount(String headerHex) {
+        int totalWords = 32;
+        if (headerHex != null && headerHex.length() >= 16) {
+            try {
+                totalWords = Integer.parseInt(headerHex.substring(12, 16), 16);
+            } catch (Exception ignore) {
+                totalWords = 32;
+            }
+        }
+        return clampUserWords(totalWords);
+    }
+
+    private int clampUserWords(int words) {
+        if (words < MIN_USER_WORDS)
+            return MIN_USER_WORDS;
+        return Math.min(words, MAX_USER_WORDS);
+    }
+
+    private int peekUserWordsWithTidFilter(String tid, int tidBits) {
+        try {
+            String hdr = mReader.readData("00000000",
+                    RFIDWithUHFUART.Bank_TID, 0, tidBits, tid,
+                    RFIDWithUHFUART.Bank_USER, 0, 4);
+            Log.i(TAG, "🔍 TID-FILTER header peek => " + (hdr != null ? hdr : "null"));
+            return parseUserWordCount(hdr);
+        } catch (Exception e) {
+            Log.w(TAG, "TID-filter header peek failed: " + e.getMessage());
+            return MIN_USER_WORDS;
         }
     }
 

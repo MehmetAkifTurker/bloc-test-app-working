@@ -127,7 +127,7 @@ import 'package:flutter/services.dart';
 import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
 
 class MainMenu extends StatefulWidget {
-  const MainMenu({Key? key}) : super(key: key);
+  const MainMenu({super.key});
 
   @override
   State<MainMenu> createState() => _MainMenuState();
@@ -244,13 +244,13 @@ class _BrandActionCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const _BrandActionCard({
-    Key? key,
+    super.key,
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.accent,
     required this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

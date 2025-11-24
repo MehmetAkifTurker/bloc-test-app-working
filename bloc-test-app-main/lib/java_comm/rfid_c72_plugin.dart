@@ -264,6 +264,7 @@ class RfidC72Plugin {
     String partNumber,
     String serialNumber,
     String manufactureDate,
+    String expireDate,
   ) {
     return _channel.invokeMethod<bool>('writeAtaUserMemoryWithPayload', {
       'manufacturer': manufacturer,
@@ -271,6 +272,7 @@ class RfidC72Plugin {
       'partNumber': partNumber,
       'serialNumber': serialNumber,
       'manufactureDate': manufactureDate,
+      'expireDate': expireDate,
     });
   }
 
