@@ -233,7 +233,7 @@
 //   Future<void> _shareExcelAnywhere() async {
 //     if (_tagItems.isEmpty) {
 //       ScaffoldMessenger.of(context).showSnackBar(
-//         const SnackBar(content: Text('Liste boş: export için etiket yok.')),
+//         const SnackBar(content: Text('List empty: no tags to export.')),
 //       );
 //       return;
 //     }
@@ -315,7 +315,7 @@
 //     } catch (e) {
 //       if (!mounted) return;
 //       ScaffoldMessenger.of(context)
-//           .showSnackBar(SnackBar(content: Text('Paylaşım başarısız: $e')));
+//           .showSnackBar(SnackBar(content: Text('Export failed: $e')));
 //     } finally {
 //       if (wasScanning) _toggleScan();
 //       if (mounted) setState(() => _exportBusy = false);
@@ -565,7 +565,7 @@
 //                                       softWrap: true),
 //                                   Text("SN: ${item.serialNumber}",
 //                                       softWrap: true),
-//                                   Text("Üretici: ${item.cage}", softWrap: true),
+//                                   Text("CAGE: ${item.cage}", softWrap: true),
 //                                 ],
 //                               ),
 //                             ),
@@ -641,7 +641,7 @@
 //               opacity: (_exportBusy || _tagItems.isEmpty) ? 0.5 : 1.0,
 //               child: FloatingActionButton(
 //                 heroTag: 'fabShareEmail',
-//                 tooltip: 'E-posta ile paylaş (.xlsx)',
+//                 tooltip: 'Share via email (.xlsx)',
 //                 shape: const CircleBorder(),
 //                 backgroundColor: Colors.grey.shade700,
 //                 foregroundColor: Colors.white,
@@ -891,7 +891,7 @@
 //   Future<void> _shareExcelAnywhere() async {
 //     if (_tagItems.isEmpty) {
 //       ScaffoldMessenger.of(context).showSnackBar(
-//         const SnackBar(content: Text('Liste boş: export için etiket yok.')),
+//         const SnackBar(content: Text('List empty: no tags to export.')),
 //       );
 //       return;
 //     }
@@ -1255,7 +1255,7 @@
 //               opacity: (_exportBusy || _tagItems.isEmpty) ? 0.5 : 1.0,
 //               child: FloatingActionButton(
 //                 heroTag: 'fabShareEmail',
-//                 tooltip: 'E-posta ile paylaş (.xlsx)',
+//                 tooltip: 'Share via email (.xlsx)',
 //                 shape: const CircleBorder(),
 //                 backgroundColor: Colors.grey.shade700,
 //                 foregroundColor: Colors.white,
@@ -1290,6 +1290,7 @@ import 'dart:io';
 
 import 'package:excel/excel.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // for kDebugMode
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -1300,15 +1301,29 @@ import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/epc_u
 import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/tag_detail_screen.dart';
 import 'package:water_boiler_rfid_labeler/ui/screens/diagnostic_screen.dart';
 
+// Performance: Disable verbose logs in release mode
+void _log(String msg) {
+  if (kDebugMode) {
+    log(msg);
+  }
+}
+
 class FilterOption {
   final int id;
   final String label;
   const FilterOption(this.id, this.label);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is FilterOption && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
-const FilterOption kAtaAll = FilterOption(-999, 'All — show everything');
+const FilterOption kFilterAll = FilterOption(-999, 'All — show everything');
 
-const List<FilterOption> kAtaFilterOptions = [
+const List<FilterOption> kFilterOptions = [
   FilterOption(0, 'All others'),
   FilterOption(1, 'Item (general; not 8–63)'),
   FilterOption(2, 'Carton'),
@@ -1320,7 +1335,7 @@ const List<FilterOption> kAtaFilterOptions = [
   FilterOption(12, 'Galley Ovens'),
   FilterOption(13, 'Aircraft Security Items'),
   FilterOption(14, 'Life Vests'),
-  FilterOption(15, 'Oxygen Generators (not cylinders/bottles)'),
+  FilterOption(15, 'Oxygen Generators'),
   FilterOption(16, 'Engine & Engine Components'),
   FilterOption(17, 'Avionics'),
   FilterOption(18, 'Experimental (“flight test”) equip.'),
@@ -1330,7 +1345,7 @@ const List<FilterOption> kAtaFilterOptions = [
   FilterOption(22, 'Other Cabin Interior'),
   FilterOption(23, 'Other Repair (e.g., structural)'),
   FilterOption(24, 'Seat & Seat Components (excl. 8–10)'),
-  FilterOption(25, 'In-Flight Entertainment (IFE) & related'),
+  FilterOption(25, 'In-Flight Entertainment (IFE)'),
   FilterOption(56, 'Location Identifier'),
   FilterOption(57, 'Documentation'),
   FilterOption(58, 'Tools'),
@@ -1370,6 +1385,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
 
   Timer? _scanTimer;
   bool _scanTickBusy = false;
+  bool _scanStartedByTrigger = false;
   // Round-robin index to iterate tags missing USER
   int _umRoundRobinIndex = 0;
 
@@ -1381,32 +1397,76 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
 
   // Data
   final List<TagItem> _tagItems = [];
-  final Set<String> _epcSet = <String>{};
+  final Map<String, int> _tagIndexById = <String, int>{};
   final Map<String, DateTime> _lastSeen = {};
 
-  // TID-based USER memory cache to prevent mixing
-  final Map<String, String> _tidToUserMemory = <String, String>{};
-  final Set<String> _tidSet = <String>{};
-
   // Filter
-  FilterOption? _selectedAta = kAtaAll;
-  List<FilterOption> get _ataOptions => [kAtaAll, ...kAtaFilterOptions];
+  FilterOption? _selectedFilter = kFilterAll;
+  List<FilterOption> get _filterOptions => [kFilterAll, ...kFilterOptions];
+
+  String _shortId(String value, {int max = 16}) {
+    if (value.length <= max) return value;
+    return '${value.substring(0, max)}...';
+  }
+
+  String _identityKey({
+    required String epc,
+    required String tid,
+    required bool validTid,
+  }) {
+    // Use EPC+TID combination for unique identity
+    // (Even if TID duplicates, EPC+TID combo will be unique)
+    final epcKey = epc.toUpperCase();
+    if (validTid && tid.isNotEmpty) {
+      return '${epcKey}|${tid.toUpperCase()}';
+    }
+    return epcKey;
+  }
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureUhf());
+    // Run heavy initialization asynchronously without blocking UI
+    _initializeAsync();
+  }
+
+  Future<void> _initializeAsync() async {
+    // Parallel initialization for faster startup
+    await Future.wait([
+      _ensureUhf(),
+      _attachTriggerControls(),
+    ]);
   }
 
   Future<void> _ensureUhf() async {
-    log("Ensuring UHF connection (BoxCheckScanScreen)...");
-    final ok = await RfidC72Plugin.ensureUhfConnected(); // sadece bağlantı
-    log(ok ? "UHF connected" : "UHF connect FAILED");
+    final ok = await RfidC72Plugin.ensureUhfConnected();
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('RFID bağlanmadı (UHF).')),
+        const SnackBar(content: Text('RFID connection failed (UHF).')),
       );
     }
+  }
+
+  Future<void> _attachTriggerControls() async {
+    await RfidC72Plugin.ensureKeyHandler();
+    RfidC72Plugin.registerRfidTriggerHandlers(
+      onTriggerDown: _handleTriggerDown,
+      onTriggerUp: _handleTriggerUp,
+    );
+    await RfidC72Plugin.setTriggerMode(ScanTriggerMode.rfid);
+  }
+
+  Future<void> _handleTriggerDown() async {
+    if (_isScanning) return;
+    _scanStartedByTrigger = true;
+    _toggleScan();
+  }
+
+  Future<void> _handleTriggerUp() async {
+    if (_scanStartedByTrigger && _isScanning) {
+      _toggleScan();
+    }
+    _scanStartedByTrigger = false;
   }
 
   Future<void> _checkIfConnected() async {
@@ -1415,10 +1475,9 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     log(connected == true ? "Yes, RFID connected" : "RFID not connected.");
   }
 
-  int? _ataClassOf(TagItem t) {
-    final hex = t.userHex;
-    if (hex == null || hex.length < 16) return null;
-    final d = decodeUserMemory(hex);
+  int? _extractAtaClass(String? userHex) {
+    if (userHex == null || userHex.length < 16) return null;
+    final d = decodeUserMemory(userHex);
     final v = d['ataClass'];
     if (v is int) return v;
     if (v is String) return int.tryParse(v);
@@ -1426,19 +1485,21 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   }
 
   List<TagItem> get _filteredItems {
-    final sel = _selectedAta;
-    if (sel == null || sel.id == kAtaAll.id) return _tagItems;
+    final sel = _selectedFilter;
+    if (sel == null || sel.id == kFilterAll.id) {
+      return _tagItems;
+    }
     final code = sel.id;
-    return _tagItems.where((t) => _ataClassOf(t) == code).toList();
+    return _tagItems.where((t) => t.filterValue == code).toList();
   }
 
   Future<void> _readTag() async {
     try {
-      // BUFFER-BASED APPROACH: Use continuous inventory like TagThread
-      final String? tagInfoJson = await RfidC72Plugin.readSingleTagWithTid();
+      String? tagInfoJson = await RfidC72Plugin.readSingleTagMeta();
+      if (tagInfoJson == null || tagInfoJson.isEmpty) {
+        tagInfoJson = await RfidC72Plugin.readSingleTagWithTid();
+      }
       if (tagInfoJson == null || tagInfoJson.isEmpty) return;
-
-      log("🔍 BUFFER-SCAN: Raw tag info: $tagInfoJson");
 
       // Parse the JSON response containing EPC, TID, and RSSI
       late Map<String, dynamic> tagInfo;
@@ -1460,110 +1521,164 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
 
       if (epcHex.isEmpty) return;
 
-      log("🔍 BUFFER-SCAN: Detected tag with working TID reading:");
-      log("🔍   EPC: $epcHex");
-      log("🔍   TID: ${tid.isNotEmpty ? tid : 'EMPTY'} (${validTid ? 'VALID' : 'INVALID'})");
-      log("🔍   RSSI: $rssi");
-      log("🔍   Direct USER: ${directUserMemory.isNotEmpty ? '${directUserMemory.length} chars' : 'EMPTY'}");
-
-      final now = DateTime.now();
-      final last = _lastSeen[epcHex];
-      if (last != null && now.difference(last) < const Duration(seconds: 2)) {
-        log("🔍 COOLDOWN: Skipping $epcHex (seen ${now.difference(last).inMilliseconds}ms ago)");
-        return;
-      }
-      _lastSeen[epcHex] = now;
-
-      // Use TID for unique identification (now working!)
-      final String uniqueId = validTid && tid.isNotEmpty ? tid : epcHex;
-      if (_tidSet.contains(uniqueId)) {
-        log("🔍 BUFFER-SCAN: Duplicate tag (TID: ${uniqueId.substring(0, 16)}...) - skipping");
-        return;
-      }
-
-      log("✅ NEW-TAG: First time seeing TID: ${uniqueId.substring(0, 16)}...");
-
-      final decoded = decodeEpc(epcHex);
-
-      // Read USER memory using enhanced strategy
-      String? userHex;
-      if (_tidToUserMemory.containsKey(uniqueId)) {
-        // Use cached USER memory for this ID
-        userHex = _tidToUserMemory[uniqueId];
-        log("✅ CACHE: Using cached USER memory for ID: ${uniqueId.length > 20 ? uniqueId.substring(0, 20) + "..." : uniqueId}");
-      } else {
-        // Read USER memory immediately and cache it
-        try {
-          final String idType = validTid ? "TID" : "EPC";
-          log("🔍 STRATEGY: Reading USER memory for $idType: ${uniqueId.length > 20 ? uniqueId.substring(0, 20) + "..." : uniqueId}");
-          log("🔍 STRATEGY: RSSI: $rssi (stronger signal = more likely to read correctly)");
-
-          // ❌ REMOVED: This was overriding correct TID-filtered data!
-          // userHex = await RfidC72Plugin.readUserMemory();
-
-          // ✅ Use TID-filtered data from SDK instead
-          if (directUserMemory.isNotEmpty && directUserMemory.length >= 16) {
-            userHex = directUserMemory;
-            log("✅ USING TID-FILTERED: ${directUserMemory.substring(0, 32)}...");
-          } else {
-            userHex = null;
-            log("❌ NO TID-FILTERED DATA");
-          }
-
-          if (userHex != null && userHex.length >= 16) {
-            _tidToUserMemory[uniqueId] = userHex;
-            log("✅ SUCCESS: Cached USER memory for $idType: ${uniqueId.length > 20 ? uniqueId.substring(0, 20) + "..." : uniqueId}");
-            log("✅ SUCCESS: USER data (${userHex.length} chars): ${userHex.substring(0, userHex.length >= 64 ? 64 : userHex.length)}");
-
-            // CRITICAL DEBUG: Check if this USER memory is different from others
-            bool isDifferent = _tidToUserMemory.values
-                .where((cached) => cached != userHex)
-                .isNotEmpty;
-            log("🔍 UNIQUENESS: This USER memory is ${isDifferent ? 'DIFFERENT' : 'SAME'} from others");
-          } else {
-            log("❌ FAILED: No USER memory available for $idType: ${uniqueId.length > 20 ? uniqueId.substring(0, 20) + "..." : uniqueId}");
-          }
-        } catch (e) {
-          log("❌ EXCEPTION: Reading USER memory: $e");
+      // Filter: Only process ATA-compliant tags (EPC header = 0x3B)
+      if (epcHex.length >= 2) {
+        final epcHeader = epcHex.substring(0, 2).toUpperCase();
+        if (epcHeader != '3B') {
+          // Non-ATA tag - skip silently (don't add to list)
+          return;
         }
       }
 
-      setState(() {
-        _epcSet.add(epcHex);
-        _tidSet.add(uniqueId);
+      final now = DateTime.now();
+      final String identityKey =
+          _identityKey(epc: epcHex, tid: tid, validTid: validTid);
+      final String displayId = (validTid && tid.isNotEmpty) ? tid : epcHex;
+      final int? existingIndex = _tagIndexById[identityKey];
+      final TagItem? existingItem =
+          existingIndex != null ? _tagItems[existingIndex] : null;
+      final bool needsUser = !(existingItem?.userRead ?? false);
+      final bool hasDirectUser =
+          directUserMemory.isNotEmpty && directUserMemory.length >= 16;
 
-        final newTag = TagItem(
-            rawEpc: epcHex,
-            cage: decoded.cage,
-            partNumber: decoded.partNumber,
-            serialNumber: decoded.serialNumber,
+      final last = _lastSeen[identityKey];
+      if (last != null &&
+          now.difference(last) < const Duration(seconds: 2) &&
+          !needsUser &&
+          !hasDirectUser) {
+        return;
+      }
+      _lastSeen[identityKey] = now;
+
+      final bool isNewTag = existingItem == null;
+      if (isNewTag && kDebugMode) {
+        log("✅ NEW-TAG: ${_shortId(displayId)} | EPC: ${_shortId(epcHex)} | USER: ${hasDirectUser ? 'direct' : 'pending'}");
+      }
+
+      final decoded = decodeEpc(epcHex);
+
+      String? userHex;
+      bool userUpdatedNow = false;
+
+      // Use direct USER from inventory if available
+      if (hasDirectUser) {
+        userHex = directUserMemory;
+        userUpdatedNow = true;
+        log("✅ USER(scan) from inventory: ${userHex.substring(0, userHex.length >= 32 ? 32 : userHex.length)}...");
+      } else if (needsUser) {
+        // Fetch USER via EPC-filtered read
+        userHex = await _fetchUserMemory(
+          epcHex: epcHex,
+          tid: tid,
+          validTid: validTid,
+          reason: "scan",
+        );
+        if (userHex != null && userHex.length >= 16) {
+          userUpdatedNow = true;
+        }
+      } else {
+        // Use cached USER
+        userHex = existingItem?.userHex;
+      }
+
+      int? ataClass = existingItem?.ataClass;
+      if (userHex != null && userHex.length >= 16) {
+        if (existingItem == null || existingItem.userHex != userHex) {
+          ataClass = _extractAtaClass(userHex);
+        }
+      }
+
+      TagItem updatedItem;
+      if (existingItem == null) {
+        updatedItem = TagItem(
+          rawEpc: epcHex,
+          cage: decoded.cage,
+          partNumber: decoded.partNumber,
+          serialNumber: decoded.serialNumber,
           tid: validTid && tid.isNotEmpty ? tid : null,
+          filterValue: decoded.filterValue,
           userRead: userHex != null && userHex.length >= 16,
           userHex: userHex,
+          ataClass: ataClass,
         );
+      } else {
+        // Check if EPC changed - if so, invalidate cached USER memory
+        final epcChanged = existingItem.rawEpc != epcHex;
+        updatedItem = existingItem.copyWith(
+          rawEpc: epcHex,
+          cage: decoded.cage,
+          partNumber: decoded.partNumber,
+          serialNumber: decoded.serialNumber,
+          tid: validTid && tid.isNotEmpty ? tid : existingItem.tid,
+          filterValue: decoded.filterValue,
+          userRead: epcChanged
+              ? (userHex != null && userHex.isNotEmpty)
+              : (userHex != null ? true : existingItem.userRead),
+          userHex: epcChanged ? userHex : (userHex ?? existingItem.userHex),
+          ataClass: ataClass,
+        );
+      }
 
-        _tagItems.insert(0, newTag);
-
-        log("📝 TID-SCAN: Added tag to list:");
-        log("📝   EPC: $epcHex");
-        log("📝   TID: ${tid.isNotEmpty ? tid : 'EMPTY'}");
-        log("📝   Unique ID: ${newTag.uniqueId}");
-        log("📝   PN: ${decoded.partNumber}");
-        log("📝   SN: ${decoded.serialNumber}");
-        log("📝   CAGE: ${decoded.cage}");
-        log("📝   USER Read: ${newTag.userRead}");
-
-        // DEBUG: Show TID-to-USER mapping
-        log("📋 TID-DEBUG: Current TID-to-USER cache:");
-        _tidToUserMemory.forEach((tid, userMemory) {
-          final preview = userMemory.length >= 16
-              ? userMemory.substring(0, 16) + "..."
-              : userMemory;
-          log("📋   TID: ${tid.length > 16 ? tid.substring(0, 16) + "..." : tid} → USER: $preview");
-        });
+      setState(() {
+        _upsertTag(updatedItem);
       });
+
+      // Removed verbose logging for performance
     } catch (e) {
       log("❌ Error reading tag: $e");
+    }
+  }
+
+  Future<String?> _fetchUserMemory({
+    required String epcHex,
+    required String tid,
+    required bool validTid,
+    required String reason,
+  }) async {
+    // Use EPC-first strategy to avoid issues with duplicate TIDs
+    try {
+      final user = await RfidC72Plugin.readUserMemoryForEpc(epcHex);
+      if (user != null && user.length >= 16) {
+        log("✅ USER($reason) via EPC ${_shortId(epcHex)} → ${user.substring(0, user.length >= 32 ? 32 : user.length)}...");
+        return user;
+      }
+    } catch (e) {
+      log("❌ USER($reason) via EPC failed: $e");
+    }
+
+    // Fallback to TID if EPC read failed
+    if (validTid && tid.isNotEmpty) {
+      try {
+        final user = await RfidC72Plugin.readUserMemoryForTid(tid);
+        if (user != null && user.length >= 16) {
+          log("✅ USER($reason) via TID fallback ${_shortId(tid)} → ${user.substring(0, user.length >= 32 ? 32 : user.length)}...");
+          return user;
+        }
+      } catch (e) {
+        log("❌ USER($reason) via TID fallback failed: $e");
+      }
+    }
+
+    log("❌ USER($reason): No USER memory for EPC ${_shortId(epcHex)}");
+    return null;
+  }
+
+  void _upsertTag(TagItem tag) {
+    final id = tag.uniqueId;
+    final existingIndex = _tagIndexById[id];
+    if (existingIndex != null) {
+      _tagItems[existingIndex] = tag;
+      _rebuildTagIndex();
+      return;
+    }
+    _tagItems.insert(0, tag);
+    _rebuildTagIndex();
+  }
+
+  void _rebuildTagIndex() {
+    _tagIndexById.clear();
+    for (var i = 0; i < _tagItems.length; i++) {
+      _tagIndexById[_tagItems[i].uniqueId] = i;
     }
   }
 
@@ -1580,24 +1695,19 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
         }
       });
       setState(() => _isScanning = true);
-      log("🔍 SCAN-START: Started scanning with 800ms interval for stable detection");
     } else {
       _scanTimer?.cancel();
       _scanTimer = null;
       setState(() => _isScanning = false);
-      log("🔍 SCAN-STOP: Stopped scanning");
     }
   }
 
   void _clearList() {
     setState(() {
       _tagItems.clear();
-      _epcSet.clear();
+      _tagIndexById.clear();
       _lastSeen.clear();
-      _tidSet.clear();
-      _tidToUserMemory.clear();
     });
-    log("📝 TID-SCAN: Cleared all lists and TID cache");
   }
 
   void _openDetail(TagItem item) {
@@ -1622,18 +1732,24 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   Future<void> _checkUserMemoryOnce(TagItem item) async {
     if (item.userRead == true) return;
     try {
-      log("SCAN: Calling FIXED readUserMemoryForEpc for EPC: ${item.rawEpc}");
+      log("SCAN: Attempting user memory fetch for EPC: ${item.rawEpc}");
 
       // Longer delay for new single-tag verification approach
       await Future.delayed(const Duration(milliseconds: 200));
 
-      final hex = await RfidC72Plugin.readUserMemoryForEpc(item.rawEpc);
+      final hex = await _fetchUserMemory(
+        epcHex: item.rawEpc,
+        tid: item.tid ?? '',
+        validTid: item.tid?.isNotEmpty == true,
+        reason: "manual",
+      );
       if (!mounted) return;
 
       if (hex != null && hex.length >= 16) {
         setState(() {
           item.userHex = hex;
           item.userRead = true;
+          item.ataClass = _extractAtaClass(hex);
         });
         log("SCAN: VERIFIED USER read for EPC: ${item.rawEpc}, first 32 chars: ${hex.substring(0, 32)}");
       } else {
@@ -1662,8 +1778,8 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       final item = itemsNeedingUserMemory[index];
 
       log("SCAN: Processing USER verification for EPC: ${item.rawEpc} ($index/${totalItems})");
-        await _checkUserMemoryOnce(item);
-      }
+      await _checkUserMemoryOnce(item);
+    }
 
     _umRoundRobinIndex++;
   }
@@ -1672,7 +1788,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   Future<void> _shareExcelAnywhere() async {
     if (_tagItems.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Liste boş: export için etiket yok.')),
+        const SnackBar(content: Text('List empty: no tags to export.')),
       );
       return;
     }
@@ -1688,42 +1804,64 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
 
       sheet.appendRow([
         'No',
-        'PN',
-        'SN',
-        'Üretici (CAGE)',
-        'EPC (HEX)',
-        'USER HEX',
-        'w0',
-        'w1',
-        'w2',
-        'w3',
-        'ToC Major',
-        'ToC Minor',
-        'ATA Class',
+        'EPC',
+        'TID',
+        'PN (EPC)',
+        'SN (EPC)',
+        'CAGE',
+        'Filter',
         'Tag Type',
-        'Payload Text',
+        'MFR',
+        'SER',
+        'PNO',
+        'PNR',
+        'DMF',
+        'EXP',
+        'PDT',
+        'UIC',
+        'PML',
+        'TDN',
+        'Record Count',
+        'USER (HEX)',
       ]);
 
       int i = 1;
       for (final t in _filteredItems) {
         final userHex = t.userHex ?? '';
         final d = decodeUserMemory(userHex);
+        final fields = d['fields'] as Map? ?? {};
+
+        // Helper to format dates
+        String formatDate(String? raw) {
+          if (raw == null || raw.length != 8) return raw ?? '';
+          if (!RegExp(r'^\d{8}$').hasMatch(raw)) return raw;
+          return '${raw.substring(0, 4)}/${raw.substring(4, 6)}/${raw.substring(6, 8)}';
+        }
+
+        final tocHeader = d['tocHeader'] as Map?;
+        final tagTypeLabel = tocHeader?['ataTagTypeLabel'] ?? '';
+
         sheet.appendRow([
           i++,
+          t.rawEpc,
+          t.tid ?? '',
           t.partNumber,
           t.serialNumber,
           t.cage,
-          t.rawEpc,
+          t.filterValue ?? '',
+          tagTypeLabel,
+          fields['MFR'] ?? '',
+          fields['SER'] ?? '',
+          fields['PNO'] ?? '',
+          fields['PNR'] ?? '',
+          formatDate(fields['DMF']),
+          formatDate(fields['EXP']),
+          fields['PDT'] ?? '',
+          fields['UIC'] ?? '',
+          fields['PML'] ?? '',
+          fields['TDN'] ?? '',
+          d['recordCount'] ?? '',
           userHex,
-          d['w0'] ?? '',
-          d['w1'] ?? '',
-          d['w2'] ?? '',
-          d['w3'] ?? '',
-          d['tocMajor'] ?? '',
-          d['tocMinor'] ?? '',
-          d['ataClass'] ?? '',
-          d['tagType'] ?? '',
-          d['payloadText'] ?? '',
         ]);
       }
 
@@ -1747,13 +1885,14 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
               mimeType:
                   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         ],
-        subject: 'RFID Export ($stamp)',
-        text: 'Ekte PN/SN/Üretici + EPC + USER içerikleri bulunmaktadır.',
+        subject: 'RFID Tag Export - $stamp',
+        text:
+            'Attached: RFID tag data including EPC, TID, USER memory and decoded TEI fields.',
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Paylaşım başarısız: $e')));
+          .showSnackBar(SnackBar(content: Text('Export failed: $e')));
     } finally {
       if (wasScanning) _toggleScan();
       if (mounted) setState(() => _exportBusy = false);
@@ -1761,27 +1900,55 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   }
 
   Widget _buildAtaFilterDropdown() {
-    final opts = _ataOptions;
-    return DropdownButtonFormField<FilterOption>(
-      value: _selectedAta ?? kAtaAll,
-      isDense: true,
-      isExpanded: true,
-      // <= Menü yüksekliğini 5 satırla sınırla
-      menuMaxHeight: 5 * kMinInteractiveDimension,
-      decoration: InputDecoration(
-        labelText: 'ATA Class',
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+    final opts = _filterOptions;
+    return Theme(
+      data: Theme.of(context).copyWith(
+        inputDecorationTheme: InputDecorationTheme(
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: _brandNavy, width: 2),
+          ),
+          floatingLabelStyle: const TextStyle(color: _brandNavy),
+        ),
       ),
-      items: opts.map((o) {
-        final label = o.id == kAtaAll.id ? o.label : '${o.id} — ${o.label}';
-        return DropdownMenuItem(
-          value: o,
-          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-        );
-      }).toList(),
-      onChanged: (v) => setState(() => _selectedAta = v),
+      child: DropdownButtonFormField<FilterOption>(
+        value: _selectedFilter ?? kFilterAll,
+        isDense: true,
+        isExpanded: true,
+        menuMaxHeight: 5 * kMinInteractiveDimension,
+        decoration: InputDecoration(
+          labelText: 'Filter Value',
+          isDense: true,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: _brandNavy, width: 2),
+          ),
+        ),
+        items: opts.map((o) {
+          final label =
+              o.id == kFilterAll.id ? o.label : '${o.id} — ${o.label}';
+          return DropdownMenuItem(
+            value: o,
+            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          );
+        }).toList(),
+        onChanged: (v) {
+          setState(() => _selectedFilter = v);
+          final label = v == null || v.id == kFilterAll.id
+              ? 'ALL'
+              : '${v.id} (${v.label})';
+          log('FILTER: Selected $label');
+          // Unfocus after a brief delay to ensure dropdown closes first
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted) {
+              FocusScope.of(context).unfocus();
+            }
+          });
+        },
+      ),
     );
   }
 
@@ -1789,9 +1956,31 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("Adjust Power Level => ${_powerLevel.toInt()}",
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
+        Row(
+          children: [
+            Icon(Icons.power, size: 16, color: _brandNavy),
+            const SizedBox(width: 6),
+            const Text("RF Power",
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2)),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: _brandNavy,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text("${_powerLevel.toInt()} dBm",
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
             activeTrackColor: _brandNavy,
@@ -1915,7 +2104,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
                   children: [
                     Text("PN: ${item.partNumber}", softWrap: true),
                     Text("SN: ${item.serialNumber}", softWrap: true),
-                    Text("Üretici: ${item.cage}", softWrap: true),
+                    Text("CAGE: ${item.cage}", softWrap: true),
                   ],
                 ),
               ),
@@ -1933,10 +2122,50 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
-            child: Text(
-              "Total Tags: ${items.length} / ${_tagItems.length}",
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: _brandNavy,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(Icons.style, size: 16, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  "Tags",
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _brandNavy,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    "${items.length}",
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white),
+                  ),
+                ),
+                if (items.length != _tagItems.length) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    "/ ${_tagItems.length}",
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
+              ],
             ),
           ),
           Expanded(
@@ -1959,6 +2188,9 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   @override
   void dispose() {
     _scanTimer?.cancel();
+    RfidC72Plugin.clearRfidTriggerHandlers();
+    // ignore: discarded_futures
+    RfidC72Plugin.setTriggerMode(ScanTriggerMode.barcode);
     super.dispose();
   }
 
@@ -1977,25 +2209,10 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _buildButtonRow(),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _buildAtaFilterDropdown(),
-            ),
-            const SizedBox(height: 8),
-            // DIAGNOSTIC BUTTON
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const DiagnosticScreen(),
-                  ));
-                },
-                icon: const Icon(Icons.bug_report),
-                label: const Text('Test Individual Tags'),
-                style: TextButton.styleFrom(foregroundColor: Colors.orange),
-              ),
             ),
             const SizedBox(height: 8),
             _buildTagList(),
@@ -2010,7 +2227,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
               opacity: (_exportBusy || _tagItems.isEmpty) ? 0.5 : 1.0,
               child: FloatingActionButton(
                 heroTag: 'fabShareEmail',
-                tooltip: 'E-posta ile paylaş (.xlsx)',
+                tooltip: 'Share via email (.xlsx)',
                 shape: const CircleBorder(),
                 backgroundColor: Colors.grey.shade700,
                 foregroundColor: Colors.white,

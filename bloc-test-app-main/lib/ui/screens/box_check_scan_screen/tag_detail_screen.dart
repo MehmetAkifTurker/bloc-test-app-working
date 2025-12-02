@@ -509,6 +509,60 @@ const Map<String, String> kAtaUserFieldLabels = {
 
 const Set<String> _kDateKeys = {'DMF', 'EXP', 'DOH', 'DNH', 'OVD'};
 
+// ==================== THEME CONSTANTS ====================
+const Color _brandNavy = Color(0xFF003B5C);
+const Color _brandNavyLight = Color(0xFF1A5A7F);
+const Color _accentOrange = Color(0xFFFF6B35);
+const Color _textPrimary = Color(0xFF1A1A1A);
+const Color _textSecondary = Color(0xFF666666);
+const Color _bgLight = Color(0xFFF8F9FA);
+const Color _borderLight = Color(0xFFE0E0E0);
+
+// Text Styles
+const TextStyle _sectionTitleStyle = TextStyle(
+  fontSize: 16,
+  fontWeight: FontWeight.w700,
+  color: _brandNavy,
+  letterSpacing: 0.3,
+);
+
+const TextStyle _cardTitleStyle = TextStyle(
+  fontSize: 14,
+  fontWeight: FontWeight.w700,
+  color: _brandNavy,
+);
+
+const TextStyle _labelStyle = TextStyle(
+  fontSize: 13,
+  fontWeight: FontWeight.w600,
+  color: _textSecondary,
+);
+
+const TextStyle _valueStyle = TextStyle(
+  fontSize: 14,
+  fontWeight: FontWeight.w500,
+  color: _textPrimary,
+  height: 1.3,
+);
+
+const TextStyle _chipTitleStyle = TextStyle(
+  fontSize: 11,
+  fontWeight: FontWeight.w700,
+  color: _textSecondary,
+  letterSpacing: 0.5,
+);
+
+const TextStyle _chipValueStyle = TextStyle(
+  fontSize: 20,
+  fontWeight: FontWeight.w800,
+  color: _brandNavy,
+);
+
+// Spacing
+const double _spacing = 16.0;
+const double _spacingSmall = 8.0;
+const double _spacingLarge = 24.0;
+
 class _TagDetailScreenState extends State<TagDetailScreen> {
   // Locate / ses
   bool _isLocating = false;
@@ -535,17 +589,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     super.initState();
     _userHex = widget.userMemoryHex;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      log('DETAIL — EPC: ${widget.tagItem.rawEpc} | PN: ${widget.tagItem.partNumber} | SN: ${widget.tagItem.serialNumber} | CAGE: ${widget.tagItem.cage}');
-      log('DETAIL — Provided USER memory length: ${_userHex.length}');
-    });
-
     if (_userHex.isNotEmpty && _userHex.length >= 16) {
-      // Use provided user memory data directly without complex verification
-      _decodeAndVerifyUserMemory(widget.tagItem.partNumber, _userHex);
+      // Use provided user memory data
+      log('DETAIL: Using provided user memory data for EPC: ${widget.tagItem.rawEpc}');
+      _autoFetch = false;
     } else {
       // Start auto-read only if no user memory data was provided
-      log('DETAIL — No valid USER memory provided, starting auto-read');
+      log('DETAIL: No valid USER memory provided, starting auto-read');
       _startAutoUserRead();
     }
   }
@@ -859,15 +909,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           children: [
             SizedBox(
               width: 140,
-              child: Text(uiLabel,
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade700,
-                      fontWeight: FontWeight.w700)),
+              child: Text(uiLabel, style: _labelStyle),
             ),
             Expanded(
-              child: Text(shown,
-                  style: const TextStyle(fontSize: 14, height: 1.25)),
+              child: Text(shown, style: _valueStyle),
             ),
           ],
         ),
@@ -888,23 +933,20 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.grey.shade100,
+          color: _bgLight,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(color: _borderLight),
         ),
-        child: Text(
-          text.isEmpty ? '-' : text,
-          style: const TextStyle(fontSize: 14, height: 1.25),
-        ),
+        child: Text(text.isEmpty ? '-' : text, style: _valueStyle),
       );
     }
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: _bgLight,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: _borderLight),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -918,22 +960,16 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.grey.shade100,
+          color: _bgLight,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(color: _borderLight),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title.toUpperCase(),
-                style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w700)),
+            Text(title.toUpperCase(), style: _chipTitleStyle),
             const SizedBox(height: 6),
-            Text(value,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            Text(value, style: _chipValueStyle),
           ],
         ),
       ),
@@ -949,39 +985,78 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   }
 
   /// Uzun basınca TAM METNİ kopyalar. `previewMaxLines` verilirse ekranda kısaltır.
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text('$label:', style: _labelStyle),
+          ),
+          Expanded(
+            child: Text(value, style: _valueStyle.copyWith(fontSize: 13)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _longPressCopyBox(String label, String fullText,
       {int? previewMaxLines}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey.shade700,
-                fontWeight: FontWeight.w700)),
-        const SizedBox(height: 6),
-        GestureDetector(
-          onLongPress: () => _copyAll(fullText, label),
-          behavior: HitTestBehavior.opaque,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
+    // Determine icon based on label
+    IconData icon = Icons.memory;
+    Color iconColor = _brandNavy;
+    if (label.contains('EPC')) {
+      icon = Icons.sell_outlined;
+      iconColor = Colors.purple.shade700;
+    } else if (label.contains('User')) {
+      icon = Icons.storage;
+      iconColor = Colors.teal.shade700;
+    }
+
+    return GestureDetector(
+      onLongPress: () => _copyAll(fullText, label),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: _bgLight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _borderLight),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 20, color: iconColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(label,
+                      style: _cardTitleStyle.copyWith(color: iconColor)),
+                ),
+                Icon(Icons.copy, size: 14, color: _textSecondary),
+              ],
             ),
-            child: Text(
+            const SizedBox(height: 12),
+            Text(
               fullText.isEmpty ? '-' : fullText,
-              maxLines: previewMaxLines, // null ise sınırsız
+              maxLines: previewMaxLines,
               overflow: previewMaxLines != null
                   ? TextOverflow.ellipsis
                   : TextOverflow.visible,
-              style: const TextStyle(height: 1.25),
+              style: _valueStyle.copyWith(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+              ),
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -1043,87 +1118,76 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           ),
           const SizedBox(height: 16),
 
-          // EPC Payload (Filter + Manufacturer)
-          Text('EPC Payload',
-              style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey.shade700,
-                  fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
+          // EPC Payload Card (like Birth/Lifecycle)
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.grey.shade300),
+              color: _bgLight,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _borderLight),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Text('Filter:',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: Colors.grey.shade700)),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        filterLabel,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
+                    Icon(Icons.qr_code_2, size: 20, color: _brandNavy),
+                    const SizedBox(width: 8),
+                    Text('EPC Payload', style: _cardTitleStyle),
                   ],
                 ),
+                const SizedBox(height: 12),
+                _buildInfoRow('Filter', filterLabel),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text('Manufacturer:',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: Colors.grey.shade700)),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        manufacturerFromEpc,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
+                _buildInfoRow('Manufacturer', manufacturerFromEpc),
               ],
             ),
           ),
 
           const SizedBox(height: 16),
-          if (hasPayload) ...[
-            Text('User Memory Payload',
-                style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey.shade700,
-                    fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            _payloadBox(decodedFields, payloadText),
-          ],
 
-          const SizedBox(height: 16),
+          // For Dual/Multi-Record tags, show records separately
+          if (_isDualRecordTag(decodedUser) ||
+              _hasMultipleRecords(decodedUser)) ...[
+            _buildRecordSections(decodedUser),
+            const SizedBox(height: 16),
+          ] else if (hasPayload) ...[
+            // Single record - show combined payload
+            const Text('User Memory Payload', style: _sectionTitleStyle),
+            const SizedBox(height: 8),
+            _payloadBox(decodedFields, payloadText),
+            const SizedBox(height: 16),
+          ],
           _longPressCopyBox('EPC (Hex)', epcText),
 
           const SizedBox(height: 16),
           // Ekranda 2 satır, uzun basınca TAMAMINI kopyalar
           _longPressCopyBox('User Memory (Hex)', userText, previewMaxLines: 2),
 
-          if (decodedUser.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              "Header: w0=${decodedUser['w0']}  w1=${decodedUser['w1']}  w2=${decodedUser['w2']}  w3=${decodedUser['w3']}",
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-          ],
+          // ToC Header (commented for now - can be added back if needed)
+          // if (decodedUser.isNotEmpty) ...[
+          //   const SizedBox(height: 8),
+          //   Container(
+          //     padding: const EdgeInsets.all(12),
+          //     decoration: BoxDecoration(
+          //       color: Colors.grey.shade50,
+          //       borderRadius: BorderRadius.circular(8),
+          //       border: Border.all(color: Colors.grey.shade200),
+          //     ),
+          //     child: Row(
+          //       children: [
+          //         Icon(Icons.info_outline, size: 16, color: _textSecondary),
+          //         const SizedBox(width: 8),
+          //         Expanded(
+          //           child: Text(
+          //             "ToC Header: w0=${decodedUser['w0']}  w1=${decodedUser['w1']}  w2=${decodedUser['w2']}  w3=${decodedUser['w3']}",
+          //             style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: _textSecondary, fontWeight: FontWeight.w500),
+          //           ),
+          //         ),
+          //       ],
+          //     ),
+          //   ),
+          // ],
 
           const SizedBox(height: 20),
           // Ses anahtarı
@@ -1161,9 +1225,486 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             isLocating: _isLocating,
             signalStrength: _latestSignal,
           ),
+
+          // Update Lifecycle button (for Dual-Record tags)
+          if (_isDualRecordTag(decodedUser)) ...[
+            const SizedBox(height: 20),
+            Divider(color: Colors.grey.shade400, thickness: 1),
+            const SizedBox(height: 16),
+            const Text('Lifecycle Management', style: _sectionTitleStyle),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: () => _showUpdateLifecycleDialog(context),
+                icon: const Icon(Icons.edit_note_rounded, size: 22),
+                label: const Text(
+                  'Update Lifecycle Record',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF003B5C),
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  bool _isDualRecordTag(Map<String, dynamic> decodedUser) {
+    final tocHeader = decodedUser['tocHeader'];
+    if (tocHeader == null) return false;
+
+    // Check tag type
+    final tagType = tocHeader['ataTagType'];
+    if (tagType == 0x0001) return true; // Dual-Record tag type
+
+    // Fallback: check for record descriptors and lifecycle
+    final rdWords = tocHeader['recordDescriptorWords'];
+    if (rdWords == null || rdWords < 2) return false;
+
+    // If has Full ToC with 2+ RDs, likely has lifecycle (even if empty)
+    final recordDescriptors = decodedUser['recordDescriptors'];
+    if (recordDescriptors != null && recordDescriptors is List) {
+      for (final rd in recordDescriptors) {
+        if (rd is Map && rd['recordType'] == 0x04) {
+          return true; // Has Lifecycle RD
+        }
+      }
+    }
+
+    return false;
+  }
+
+  bool _hasMultipleRecords(Map<String, dynamic> decodedUser) {
+    final records = decodedUser['records'];
+    return records != null && records is List && records.length > 1;
+  }
+
+  Widget _buildRecordSections(Map<String, dynamic> decodedUser) {
+    final records = decodedUser['records'];
+    if (records == null || records is! List || records.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    const brandNavy = Color(0xFF003B5C);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (int i = 0; i < records.length; i++)
+          if (records[i] is Map) ...[
+            if (i > 0) const SizedBox(height: 12),
+            _buildRecordCard(records[i] as Map<String, dynamic>, brandNavy),
+          ],
+      ],
+    );
+  }
+
+  Widget _buildRecordCard(Map<String, dynamic> record, Color brandColor) {
+    final descriptor = record['descriptor'] as Map?;
+    final recordType = descriptor?['recordType'] ?? 0;
+    final recordTypeLabel = descriptor?['recordTypeLabel'] ?? 'Unknown';
+    final payloadText = record['payloadText']?.toString() ?? '';
+    final fields = record['fields'] as Map?;
+
+    final Map<String, String> recordFields = {};
+    if (fields != null) {
+      for (final entry in fields.entries) {
+        final key = entry.key?.toString().toUpperCase();
+        var value = entry.value?.toString().trim();
+        if (key != null &&
+            key.isNotEmpty &&
+            value != null &&
+            value.isNotEmpty) {
+          // Format date fields (YYYYMMDD → YYYY/MM/DD)
+          if ((key == 'DMF' ||
+                  key == 'EXP' ||
+                  key == 'OVD' ||
+                  key == 'DOH' ||
+                  key == 'DNH') &&
+              value.length == 8 &&
+              RegExp(r'^\d{8}$').hasMatch(value)) {
+            value =
+                '${value.substring(0, 4)}/${value.substring(4, 6)}/${value.substring(6, 8)}';
+          }
+          recordFields[key] = value;
+        }
+      }
+    }
+
+    // Icon based on record type
+    IconData recordIcon;
+    Color iconColor;
+    switch (recordType) {
+      case 0x00: // Birth
+        recordIcon = Icons.cake;
+        iconColor = brandColor;
+        break;
+      case 0x04: // Lifecycle
+        recordIcon = Icons.autorenew;
+        iconColor = Colors.orange.shade700;
+        break;
+      case 0x01: // Current Data
+        recordIcon = Icons.update;
+        iconColor = Colors.green.shade700;
+        break;
+      case 0x03: // Part History
+        recordIcon = Icons.history;
+        iconColor = Colors.blue.shade700;
+        break;
+      default:
+        recordIcon = Icons.description;
+        iconColor = Colors.grey.shade700;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _bgLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _borderLight),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(recordIcon, size: 20, color: iconColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(recordTypeLabel,
+                    style: _cardTitleStyle.copyWith(color: iconColor)),
+              ),
+            ],
+          ),
+          if (recordFields.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ...recordFields.entries.map((e) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 50,
+                        child: Text('${e.key}:', style: _labelStyle),
+                      ),
+                      Expanded(
+                        child: Text(e.value,
+                            style: _valueStyle.copyWith(fontSize: 13)),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+          if (payloadText.isNotEmpty && recordFields.isEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              payloadText,
+              style: const TextStyle(fontSize: 11, color: Colors.black54),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showUpdateLifecycleDialog(BuildContext context) async {
+    final pnrCtrl = TextEditingController();
+    final pmlCtrl = TextEditingController();
+    final tdnCtrl = TextEditingController();
+
+    DateTime? selectedExpDate;
+    DateTime? selectedOvhDate;
+
+    const brandNavy = Color(0xFF003B5C);
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => Theme(
+          data: Theme.of(context).copyWith(
+            inputDecorationTheme: InputDecorationTheme(
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: brandNavy, width: 2),
+              ),
+              floatingLabelStyle: const TextStyle(color: brandNavy),
+            ),
+          ),
+          child: GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: brandNavy.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.edit_note_rounded,
+                        color: brandNavy, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Update Lifecycle',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: brandNavy,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 18, color: Colors.blue),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Updates rewritable Lifecycle data.\nBirth record remains locked.',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black87,
+                                  height: 1.4),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: pnrCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Current Part Number (PNR)',
+                        hintText: 'e.g., TA6950-02',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 14),
+                      ),
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w500),
+                      textCapitalization: TextCapitalization.characters,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: pmlCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Mod Level (PML)',
+                        hintText: 'e.g., MOD-123',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 14),
+                      ),
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w500),
+                      textCapitalization: TextCapitalization.characters,
+                    ),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: () async {
+                        DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: selectedExpDate ?? DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                          builder: (context, child) {
+                            return Theme(
+                              data: Theme.of(context).copyWith(
+                                colorScheme: const ColorScheme.light(
+                                  primary: brandNavy,
+                                  onPrimary: Colors.white,
+                                  surface: Colors.white,
+                                  onSurface: Colors.black,
+                                ),
+                              ),
+                              child: child!,
+                            );
+                          },
+                        );
+                        if (picked != null) {
+                          setDialogState(() => selectedExpDate = picked);
+                        }
+                      },
+                      child: AbsorbPointer(
+                        child: TextField(
+                          controller: TextEditingController(
+                            text: selectedExpDate == null
+                                ? ''
+                                : '${selectedExpDate!.year}/${selectedExpDate!.month.toString().padLeft(2, '0')}/${selectedExpDate!.day.toString().padLeft(2, '0')}',
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Expiration Date (EXP)',
+                            hintText: 'YYYY/MM/DD',
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 14),
+                            suffixIcon: selectedExpDate != null
+                                ? IconButton(
+                                    icon: const Icon(Icons.close, size: 18),
+                                    onPressed: () => setDialogState(
+                                        () => selectedExpDate = null),
+                                  )
+                                : const Icon(Icons.calendar_today,
+                                    size: 18, color: brandNavy),
+                          ),
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: tdnCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Certificate Number (TDN)',
+                        hintText: 'e.g., 8130-12345',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 14),
+                      ),
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey.shade700,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12),
+                  ),
+                  child: const Text('Cancel',
+                      style:
+                          TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: brandNavy,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Update',
+                      style:
+                          TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (result != true) return;
+
+    // Perform update
+    try {
+      // Format dates as YYYYMMDD
+      String? expDateFormatted;
+      if (selectedExpDate != null) {
+        expDateFormatted = '${selectedExpDate!.year.toString().padLeft(4, '0')}'
+            '${selectedExpDate!.month.toString().padLeft(2, '0')}'
+            '${selectedExpDate!.day.toString().padLeft(2, '0')}';
+      }
+
+      String? ovhDateFormatted;
+      if (selectedOvhDate != null) {
+        ovhDateFormatted = '${selectedOvhDate!.year.toString().padLeft(4, '0')}'
+            '${selectedOvhDate!.month.toString().padLeft(2, '0')}'
+            '${selectedOvhDate!.day.toString().padLeft(2, '0')}';
+      }
+
+      final ok = await RfidC72Plugin.updateLifecycleRecord(
+        epcHex: widget.tagItem.rawEpc,
+        currentPartNumber: pnrCtrl.text.trim().isEmpty
+            ? null
+            : pnrCtrl.text.trim().toUpperCase(),
+        partModLevel: pmlCtrl.text.trim().isEmpty
+            ? null
+            : pmlCtrl.text.trim().toUpperCase(),
+        expirationDate: expDateFormatted,
+        certificateNumber: tdnCtrl.text.trim().isEmpty
+            ? null
+            : tdnCtrl.text.trim().toUpperCase(),
+        lastOverhaulDate: ovhDateFormatted,
+      );
+
+      if (!mounted) return;
+
+      if (ok == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Lifecycle record updated successfully!')),
+        );
+        // Re-read USER memory
+        setState(() => _reading = true);
+        final newUserHex =
+            await RfidC72Plugin.readUserMemoryForEpc(widget.tagItem.rawEpc);
+        if (newUserHex != null && newUserHex.isNotEmpty) {
+          setState(() {
+            _userHex = newUserHex;
+            widget.tagItem.userHex = newUserHex;
+          });
+        }
+        setState(() => _reading = false);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lifecycle update failed!')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
   }
 }
 

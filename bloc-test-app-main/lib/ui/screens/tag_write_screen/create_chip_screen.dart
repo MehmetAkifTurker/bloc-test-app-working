@@ -301,13 +301,43 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
   }
 
   int _epcWords = 12;
-  int _userWords = 32;
+  int _userWords = 64;
 
-  final _permalock = TextEditingController(text: '8');
+  final _permalock = TextEditingController(text: '12');
   bool _applyPermalock = true;
 
   bool _lockEpc = false;
   bool _lockUser = false;
+  
+  // Helper: Apply recommended settings when record type changes
+  void _applyRecommendedSettings(String recordType) {
+    switch (recordType) {
+      case 'DRT':
+        _epcWords = 12;
+        _userWords = 64; // Birth(~20) + Lifecycle(~30) + overhead(~10)
+        _permalock.text = '12'; // ToC(4) + RDs(4) + partial Birth(4)
+        _applyPermalock = true;
+        break;
+      case 'SRT (Birth)':
+        _epcWords = 12;
+        _userWords = 16; // Küçük birth data için yeterli
+        _permalock.text = '16'; // Tümünü lock et
+        _applyPermalock = true;
+        break;
+      case 'SRT (Utility)':
+        _epcWords = 12;
+        _userWords = 16;
+        _permalock.text = '0'; // Hiç lock etme (rewritable)
+        _applyPermalock = false;
+        break;
+      case 'MRT':
+        _epcWords = 12;
+        _userWords = 128; // Maksimum (çok history için)
+        _permalock.text = '20'; // ToC + RDs + Birth
+        _applyPermalock = true;
+        break;
+    }
+  }
 
   @override
   void dispose() {
@@ -346,8 +376,8 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
     );
 
     final msg = (ok == true)
-        ? 'Chip pre-allocate/lock işlemi başarıyla uygulandı.'
-        : 'İşlem başarısız. (configureChipAta false döndü)';
+        ? 'Chip pre-allocation/lock operation successful.'
+        : 'Operation failed (configureChipAta returned false).';
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
@@ -361,8 +391,46 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
     final n = int.tryParse(v.trim());
     if (n == null) return 'Numeric';
     if (n < 0) return 'Must be ≥ 0';
-    if (n > _userWords) return 'Permalock USER’ı aşamaz ($_userWords max)';
+    if (n > _userWords) return 'Cannot exceed USER size ($_userWords)';
+    
+    // Record type specific warnings
+    if (_recordTypeUi == 'DRT' && n < 8) {
+      return 'DRT requires minimum 8 words (ToC + RDs)';
+    }
+    if (_recordTypeUi == 'DRT' && n > _userWords - 20) {
+      return 'DRT: leave space for Lifecycle (max ${_userWords - 20})';
+    }
     return null;
+  }
+  
+  Widget _buildRecommendationRow(String type, String settings) {
+    final isSelected = _recordTypeUi == type;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            isSelected ? Icons.check_circle : Icons.circle_outlined,
+            size: 16,
+            color: isSelected ? Colors.green : Colors.grey,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$type: ',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              settings,
+              style: const TextStyle(fontSize: 11, color: Colors.black54),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -390,7 +458,7 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                   controller: _name,
                   decoration: const InputDecoration(
                     labelText: 'Name',
-                    hintText: 'Örn: Galley Equip V1',
+                    hintText: 'e.g., Galley Equip V1',
                   ),
                   validator: _validateName,
                 ),
@@ -400,14 +468,30 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                   decoration: const InputDecoration(labelText: 'Record Type'),
                   menuMaxHeight: 260,
                   items: const [
-                    DropdownMenuItem(value: 'DRT', child: Text('DRT')),
                     DropdownMenuItem(
-                        value: 'SRT (Birth)', child: Text('SRT (Birth)')),
+                      value: 'DRT',
+                      child: Text('Dual-Record (Birth + Lifecycle)'),
+                    ),
                     DropdownMenuItem(
-                        value: 'SRT (Utility)', child: Text('SRT (Utility)')),
-                    DropdownMenuItem(value: 'MRT', child: Text('MRT')),
+                      value: 'SRT (Birth)',
+                      child: Text('Single Birth (Locked, Read-only)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'SRT (Utility)',
+                      child: Text('Single Utility (Rewritable)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'MRT',
+                      child: Text('Multi-Record (Birth + History)'),
+                    ),
                   ],
-                  onChanged: (v) => setState(() => _recordTypeUi = v ?? 'DRT'),
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() {
+                      _recordTypeUi = v;
+                      _applyRecommendedSettings(v);
+                    });
+                  },
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<ChipKind>(
@@ -482,11 +566,35 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                     },
                   ),
                 ),
+                Card(
+                  color: Colors.blue.shade50,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '🔒 Permalock Settings',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Permalock: Permanently locks specified word range (cannot be unlocked!).\n'
+                          '• DRT: ToC + RDs + Birth locked, Lifecycle remains open\n'
+                          '• SRT (Birth): All data locked\n'
+                          '• SRT (Utility): Not locked (rewritable)',
+                          style: TextStyle(fontSize: 11, color: Colors.black87),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 SwitchListTile(
-                  title: const Text('Block Permalock uygula'),
+                  title: const Text('Enable Permalock'),
                   subtitle: Text(permEnabled
-                      ? '0..$_userWords word arası'
-                      : 'USER=0 veya kapalı'),
+                      ? 'First $_permalockVal words will be locked'
+                      : 'Disabled - no area will be locked'),
                   value: _applyPermalock,
                   activeColor: _brandNavy,
                   activeTrackColor: _brandNavy.withOpacity(.35),
@@ -496,21 +604,25 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                   controller: _permalock,
                   enabled: permEnabled,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Permalock (words)',
+                  decoration: InputDecoration(
+                    labelText: 'Permalock Range (words)',
+                    helperText: permEnabled 
+                        ? 'Word 0 to ${_permalockVal - 1} will be locked'
+                        : null,
+                    helperMaxLines: 2,
                   ),
                   validator: _validatePermalock,
                 ),
                 const SizedBox(height: 8),
                 SwitchListTile(
-                  title: const Text('EPC’yi kilitle (create sonrası)'),
+                  title: const Text('Lock EPC (after creation)'),
                   value: _lockEpc,
                   activeColor: _brandNavy,
                   activeTrackColor: _brandNavy.withOpacity(.35),
                   onChanged: (v) => setState(() => _lockEpc = v),
                 ),
                 SwitchListTile(
-                  title: const Text('USER’ı kilitle (create sonrası)'),
+                  title: const Text('Lock USER (after creation)'),
                   value: _lockUser,
                   activeColor: _brandNavy,
                   activeTrackColor: _brandNavy.withOpacity(.35),
@@ -535,11 +647,32 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                Card(
+                  color: Colors.grey.shade100,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '📋 Recommended Settings',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildRecommendationRow('DRT', '64 words USER, 12 permalock'),
+                        _buildRecommendationRow('SRT (Birth)', '16 words USER, 16 permalock (all)'),
+                        _buildRecommendationRow('SRT (Utility)', '16 words USER, 0 permalock'),
+                        _buildRecommendationRow('MRT', '128 words USER, 20 permalock'),
+                      ],
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Not: Filtre seçimi Tag Write ekranında yapılır. Bu sayfa yalnızca ATA’ya uygun bellek ön-ayarlarını (pre-allocate), '
-                  'Block Permalock ve isteğe bağlı kilitlemeyi hazırlar.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  'Note: Filter value is selected in Tag Write screen. '
+                  'This screen only configures ATA-compliant memory pre-allocation and locking.',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
                 ),
               ],
             ),

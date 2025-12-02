@@ -282,6 +282,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
   final List<String> _history = [];
 
   Timer? _pollTimer;
+  DateTime? _lastDuplicateNotice;
 
   @override
   void initState() {
@@ -298,35 +299,34 @@ class _QrScanScreenState extends State<QrScanScreen> {
     });
 
     // Tetik + dahili loop’tan gelen sonuçları dinle
-    _sub = RfidC72Plugin.barcodeStream.listen((code) {
-      debugPrint('QR decode (stream): "$code"');
-      if (!mounted) return;
-      setState(() {
-        _last = code;
-        _history.insert(0, code);
-      });
-    });
+    _sub = RfidC72Plugin.barcodeStream.listen(_handleDecoded);
   }
 
-  // Sadece VS Code Debug Console'a log
-  void _log(String msg) {
-    final t = DateTime.now();
-    String p2(int v) => v.toString().padLeft(2, '0');
-    final ts =
-        '${p2(t.hour)}:${p2(t.minute)}:${p2(t.second)}.${t.millisecond.toString().padLeft(3, '0')}';
-    debugPrint('RFID[$ts] $msg');
-  }
+  bool _handleDecoded(String raw) {
+    final code = raw.trim();
+    if (code.isEmpty || code == 'FAIL') return false;
 
-  Future<void> _initBarcode() async {
-    try {
-      final ok = await RfidC72Plugin.connectBarcode ?? false;
-      if (!mounted) return;
-      _log('connectBarcode => $ok');
-      setState(() => _connected = ok);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _connected = false);
+    if (_last == code) {
+      final now = DateTime.now();
+      if (_lastDuplicateNotice == null ||
+          now.difference(_lastDuplicateNotice!) > const Duration(seconds: 2)) {
+        _lastDuplicateNotice = now;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Same code scanned again')),
+          );
+        }
+      }
+      return false;
     }
+
+    if (!mounted) return false;
+    setState(() {
+      _last = code;
+      _history.remove(code);
+      _history.insert(0, code);
+    });
+    return true;
   }
 
   Future<void> _start() async {
@@ -339,14 +339,8 @@ class _QrScanScreenState extends State<QrScanScreen> {
     _pollTimer = Timer.periodic(const Duration(milliseconds: 120), (_) async {
       try {
         final s = (await RfidC72Plugin.readBarcode) ?? '';
-        if (s.isEmpty || s == 'FAIL' || s == _last) return;
-        debugPrint('QR decode (poll): "$s"'); // butonla manuel mod
-        if (!mounted) return;
-        setState(() {
-          _last = s;
-          _history.insert(0, s);
-        });
-        if (!_continuous) await _stop();
+        final accepted = _handleDecoded(s);
+        if (!_continuous && accepted) await _stop();
       } catch (_) {}
     });
   }
@@ -371,7 +365,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Kopyalandı')),
+      const SnackBar(content: Text('Copied')),
     );
   }
 
@@ -394,15 +388,15 @@ class _QrScanScreenState extends State<QrScanScreen> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  _connected ? 'Decoder bağlı' : 'Decoder bağlı değil',
+                  _connected ? 'Scanner connected' : 'Scanner disconnected',
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ],
             ),
             const SizedBox(height: 12),
 
-            // Son okunan
-            Text('Son Okunan', style: TextStyle(color: Colors.grey.shade700)),
+            // Last Scan
+            Text('Last Scan', style: TextStyle(color: Colors.grey.shade700)),
             const SizedBox(height: 6),
             GestureDetector(
               onLongPress: _last.isEmpty ? null : () => _copy(_last),
@@ -414,13 +408,21 @@ class _QrScanScreenState extends State<QrScanScreen> {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: Colors.grey.shade300),
                 ),
-                child: Text(
-                  _last.isEmpty ? '—' : _last,
-                  textAlign: TextAlign.left,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 16, height: 1.25),
-                ),
+                child: _last.isEmpty
+                    ? const Text(
+                        '—',
+                        style: TextStyle(fontSize: 16, height: 1.25),
+                      )
+                    : ConstrainedBox(
+                        constraints:
+                            const BoxConstraints(minHeight: 40, maxHeight: 160),
+                        child: SingleChildScrollView(
+                          child: SelectableText(
+                            _last,
+                            style: const TextStyle(fontSize: 16, height: 1.25),
+                          ),
+                        ),
+                      ),
               ),
             ),
 
@@ -462,12 +464,12 @@ class _QrScanScreenState extends State<QrScanScreen> {
 
             const SizedBox(height: 12),
 
-            // Geçmiş
+            // History
             Text('History', style: TextStyle(color: Colors.grey.shade700)),
             const SizedBox(height: 6),
             Expanded(
               child: _history.isEmpty
-                  ? const Center(child: Text('Henüz okuma yok.'))
+                  ? const Center(child: Text('No scans yet.'))
                   : ListView.separated(
                       itemCount: _history.length,
                       separatorBuilder: (_, __) =>

@@ -204,8 +204,18 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'RFID App',
       debugShowCheckedModeBanner: false,
-      // Tema: eski hâl (renk düzenlemesi yok)
-      theme: ThemeData(useMaterial3: true),
+      theme: ThemeData(
+        useMaterial3: true,
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            // Faster page transitions
+            TargetPlatform.android: ZoomPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
+        // Disable expensive visual effects
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
       home: const MainMenu(),
       onGenerateRoute: appRouter.onGenerateRoute,
     );

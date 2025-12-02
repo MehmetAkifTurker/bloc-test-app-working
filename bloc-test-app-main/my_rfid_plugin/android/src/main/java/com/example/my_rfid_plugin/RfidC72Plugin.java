@@ -285,6 +285,19 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 break;
             }
 
+            case "readSingleTagMeta": {
+                String tagInfo = UHFHelper.getInstance().readSingleTagMeta();
+                result.success(tagInfo);
+                break;
+            }
+
+            case "readUserMemoryForTid": {
+                String tid = call.argument("tid");
+                String userMemory = UHFHelper.getInstance().readUserMemoryForTid(tid);
+                result.success(userMemory);
+                break;
+            }
+
             case "diagnosticReadSingleTag": {
                 String diagnostic = UHFHelper.getInstance().diagnosticReadSingleTag();
                 result.success(diagnostic);
@@ -306,6 +319,25 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                         serialNumber != null ? serialNumber : "",
                         manufactureDate != null ? manufactureDate : "",
                         expireDate != null ? expireDate : "");
+                result.success(ok);
+                break;
+            }
+            
+            case "updateLifecycleRecord": {
+                String epcHex = call.argument("epcHex");
+                String currentPartNumber = call.argument("currentPartNumber");
+                String partModLevel = call.argument("partModLevel");
+                String expirationDate = call.argument("expirationDate");
+                String certificateNumber = call.argument("certificateNumber");
+                String lastOverhaulDate = call.argument("lastOverhaulDate");
+                
+                boolean ok = UHFHelper.getInstance().updateLifecycleRecord(
+                        epcHex != null ? epcHex : "",
+                        currentPartNumber,
+                        partModLevel,
+                        expirationDate,
+                        certificateNumber,
+                        lastOverhaulDate);
                 result.success(ok);
                 break;
             }

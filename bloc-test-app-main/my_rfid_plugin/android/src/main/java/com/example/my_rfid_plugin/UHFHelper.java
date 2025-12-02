@@ -362,30 +362,13 @@ public class UHFHelper {
 
             if (info != null) {
                 String epcHex = info.getEPC();
-                String tid = info.getTid();
+                String tid = normalizeTid(info.getTid());
                 String rssi = info.getRssi();
 
                 Log.i(TAG, "🔍 DETECTED: EPC: " + epcHex);
                 Log.i(TAG, "🔍 DETECTED: TID: '" + (tid != null ? tid : "null") + "' (length: "
                         + (tid != null ? tid.length() : 0) + ")");
                 Log.i(TAG, "🔍 DETECTED: RSSI: " + rssi);
-
-                // Try to read TID directly if empty from inventorySingleTag
-                if (tid == null || tid.isEmpty() || "000000000000000000000000".equals(tid)) {
-                    Log.i(TAG, "🔍 DIRECT-TID: Attempting direct TID bank read");
-                    try {
-                        String tidDirect = mReader.readData("00000000", RFIDWithUHFUART.Bank_TID, 0, 6);
-                        Log.i(TAG, "🔍 DIRECT-TID: Result: '" + tidDirect + "'");
-                        if (tidDirect != null && !tidDirect.isEmpty() &&
-                                !tidDirect.equals("000000000000000000000000") &&
-                                !tidDirect.equals("00000000000000000000000000000000")) {
-                            tid = tidDirect;
-                            Log.i(TAG, "✅ DIRECT-TID: Got valid TID: " + tid);
-                        }
-                    } catch (Exception e) {
-                        Log.w(TAG, "❌ DIRECT-TID: Failed: " + e.getMessage());
-                    }
-                }
 
                 // Read USER memory immediately while tag is detected
                 String userMemory = "";
@@ -439,9 +422,7 @@ public class UHFHelper {
                     Log.w(TAG, "❌ TID-FILTER: Exception: " + e.getMessage());
                 }
 
-                boolean validTid = tid != null && !tid.isEmpty() &&
-                        !tid.equals("000000000000000000000000") &&
-                        !tid.equals("00000000000000000000000000000000");
+                boolean validTid = isTidValid(tid);
 
                 // Return comprehensive tag information including immediate USER memory
                 return "{\"epc\":\"" + epcHex + "\",\"tid\":\"" + (tid != null ? tid : "") +
@@ -453,6 +434,31 @@ public class UHFHelper {
             return "";
         } catch (Exception e) {
             Log.e(TAG, "❌ CORRECTED: Error: " + e.getMessage());
+            return "";
+        }
+    }
+
+    public synchronized String readSingleTagMeta() {
+        if (mReader == null) {
+            Log.e(TAG, "mReader is null, cannot readSingleTagMeta");
+            return "";
+        }
+        try {
+            Log.d(TAG, "🔍 META-READ: Attempting lightweight tag detection");
+            UHFTAGInfo info = mReader.inventorySingleTag();
+            if (info == null) {
+                Log.d(TAG, "🔍 META-READ: No tag detected");
+                return "";
+            }
+            String epcHex = info.getEPC();
+            String tid = normalizeTid(info.getTid());
+            String rssi = info.getRssi();
+            boolean validTid = isTidValid(tid);
+            return "{\"epc\":\"" + epcHex + "\",\"tid\":\"" + (tid != null ? tid : "") +
+                    "\",\"rssi\":\"" + rssi + "\",\"validTid\":" + validTid +
+                    ",\"userMemory\":\"\"}";
+        } catch (Exception e) {
+            Log.e(TAG, "Error in readSingleTagMeta: " + e.getMessage());
             return "";
         }
     }
@@ -743,17 +749,50 @@ public class UHFHelper {
         return sb.toString();
     }
 
-    // [ADD] Map UI recordType -> ATA Short ToC 'Tag Type' field
+    /**
+     * Calculate CCITT CRC-16 over hex string data (ATA Spec 2000 Appendix A)
+     * Polynomial: x^16 + x^12 + x^5 + 1 (0x1021)
+     * Initial value: 0xFFFF
+     */
+    private int calculateCrc16Ccitt(String hexData) {
+        int crc = 0xFFFF;
+
+        // Process each hex pair as a byte
+        for (int i = 0; i < hexData.length(); i += 2) {
+            if (i + 2 > hexData.length())
+                break;
+
+            int byteVal = Integer.parseInt(hexData.substring(i, i + 2), 16);
+            crc ^= (byteVal << 8);
+
+            for (int bit = 0; bit < 8; bit++) {
+                if ((crc & 0x8000) != 0) {
+                    crc = (crc << 1) ^ 0x1021;
+                } else {
+                    crc = crc << 1;
+                }
+            }
+        }
+
+        return crc & 0xFFFF;
+    }
+
+    /**
+     * Map UI recordType string to ATA Tag Type field (per ATA Spec Figure 53)
+     * Returns 4-bit value for ToC Header
+     */
     private int mapAtaTagType(String rt) {
         if (rt == null)
-            return 2; // default: Single Record Tag (SRT)
+            return 0x0002; // default: Single Birth-Record Format
         String r = rt.toUpperCase(Locale.ROOT);
-        if (r.startsWith("DRT"))
-            return 3; // Dual Record Tag
-        if (r.startsWith("MRT"))
-            return 4; // Multiple Record Tag
-        // SRT (Birth/Utility) -> 2
-        return 2;
+        if (r.contains("MULTI"))
+            return 0x0000; // Multi-Record Tag
+        if (r.contains("DUAL"))
+            return 0x0001; // Dual-Record Tag
+        if (r.contains("UTILITY"))
+            return 0x000A; // Single Record Utility Tag (binary 1010)
+        // Default: Single Birth-Record Format (binary 0010)
+        return 0x0002;
     }
 
     // Binary -> Hex conversion (her 4 bit için 1 hex karakter)
@@ -888,7 +927,28 @@ public class UHFHelper {
             String manufacturer, String productName, String partNumber,
             String serialNumber, String manufactureDate, String expireDate) {
         if (mReader == null) {
-            Log.e(TAG, "mReader is null; cannot write User Memory header!");
+            Log.e(TAG, "mReader is null; cannot write User Memory!");
+            return false;
+        }
+
+        // Route to appropriate writer based on currentRecordType
+        if ("DRT".equalsIgnoreCase(currentRecordType) || "DUAL".equalsIgnoreCase(currentRecordType)) {
+            return writeDualRecordTag(manufacturer, productName, partNumber,
+                    serialNumber, manufactureDate, expireDate);
+        } else {
+            return writeSingleBirthRecordTag(manufacturer, productName, partNumber,
+                    serialNumber, manufactureDate, expireDate);
+        }
+    }
+
+    /**
+     * Write Single Birth-Record Format (Short ToC) per ATA Spec 2020.1
+     */
+    private boolean writeSingleBirthRecordTag(
+            String manufacturer, String productName, String partNumber,
+            String serialNumber, String manufactureDate, String expireDate) {
+        if (mReader == null) {
+            Log.e(TAG, "mReader is null!");
             return false;
         }
         try {
@@ -931,16 +991,16 @@ public class UHFHelper {
                 payload6bit.append('0');
             int payloadWords = payload6bit.length() / 16;
 
-            // --- 4. Build Short ToC header ---
-            int dsfid = 0x1E00; // Fixed
-            int tocMajor = 6; // Usually 6
-            int tocMinor = 1; // Usually 1
-            int ataClass = 1; // 1 for flyable
-            int tagType = mapAtaTagType(currentRecordType); // 2 for Single Birth-Record
-            int flags = 0; // All bits 0
+            // --- 4. Build Short ToC header per ATA Spec 2020.1 ---
+            int dsfid = 0x1E00; // Fixed per spec
+            int tocMajor = 4; // ATA Spec 2020.1 (Table 17)
+            int tocMinor = 2; // ATA Spec 2020.1 (Table 17)
+            int ataClass = 1; // 1 = Item (general; not 8-63)
+            int tagType = mapAtaTagType(currentRecordType); // 0x0010 for Single Birth-Record
+            int flags = 0x08; // Bit 3 = CRC indicator (1 = CRC present)
             int tocHeaderSize = 4;
-            int tocRdSize = 0;
-            int userMemWords = 4 + payloadWords; // header + payload
+            int tocRdSize = 0; // 0 = Short ToC (no RDs)
+            int userMemWords = 4 + payloadWords + 1; // header + payload + CRC
 
             // Header words
             String w0 = String.format("%04X", dsfid);
@@ -964,15 +1024,23 @@ public class UHFHelper {
                 payloadHex.append(Integer.toHexString(Integer.parseInt(chunk, 2)).toUpperCase(Locale.ROOT));
             }
 
-            // --- 6. Combine header and payload hex
-            String userMemHex = w0 + w1 + w2 + w3 + payloadHex.toString();
-            Log.i(TAG, "User Memory (Short ToC): " + userMemHex);
+            // --- 6. Calculate CRC over header + payload (CCITT CRC-16) ---
+            String dataBeforeCrc = w0 + w1 + w2 + w3 + payloadHex.toString();
+            int crc = calculateCrc16Ccitt(dataBeforeCrc);
+            String crcHex = String.format("%04X", crc);
 
-            // --- 7. Write to USER memory bank ---
+            // --- 7. Combine header + payload + CRC
+            String userMemHex = dataBeforeCrc + crcHex;
+            Log.i(TAG, "User Memory (Short ToC + CRC): " + userMemHex);
+            Log.i(TAG, "  Header: " + w0 + w1 + w2 + w3);
+            Log.i(TAG, "  Payload: " + payloadHex.toString());
+            Log.i(TAG, "  CRC: " + crcHex);
+
+            // --- 8. Write to USER memory bank ---
             String accessPwd = "00000000";
             int bank = 3; // USER memory
             int ptr = 0; // Start at word 0
-            int wordCount = userMemWords; // header + payload words
+            int wordCount = userMemWords; // header + payload + CRC words
 
             boolean success = mReader.writeData(accessPwd, bank, ptr, wordCount, userMemHex);
             Log.i(TAG, "Write Short ToC User Memory result: " + (success ? "SUCCESS" : "FAILED"));
@@ -980,7 +1048,339 @@ public class UHFHelper {
             return success;
 
         } catch (Exception e) {
-            Log.e(TAG, "Error writing User Memory Short ToC+payload: " + e.getMessage(), e);
+            Log.e(TAG, "Error writing Single Birth-Record: " + e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Write Dual-Record Format (Full ToC) per ATA Spec 2020.1 Figure 58
+     */
+    private boolean writeDualRecordTag(
+            String manufacturer, String productName, String partNumber,
+            String serialNumber, String manufactureDate, String expireDate) {
+        try {
+            Log.i(TAG, "📝 DUAL-RECORD: Starting Dual-Record tag write");
+
+            // === 1. Build Birth Record Payload ===
+            StringBuilder birthPayload = new StringBuilder();
+            if (manufacturer != null && !manufacturer.isEmpty())
+                birthPayload.append("MFR ").append(manufacturer).append("*");
+            if (serialNumber != null && !serialNumber.isEmpty())
+                birthPayload.append("SER ").append(serialNumber).append("*");
+            if (partNumber != null && !partNumber.isEmpty())
+                birthPayload.append("PNR ").append(partNumber).append("*");
+            birthPayload.append("UIC 1*");
+            if (manufactureDate != null && !manufactureDate.isEmpty())
+                birthPayload.append("DMF ").append(manufactureDate).append("*");
+            if (expireDate != null && !expireDate.isEmpty())
+                birthPayload.append("EXP ").append(expireDate).append("*");
+            if (productName != null && !productName.isEmpty())
+                birthPayload.append("PDT ").append(productName).append("*");
+
+            // Remove leading "*"
+            String birthText = birthPayload.length() > 0 && birthPayload.charAt(0) == '*'
+                    ? birthPayload.substring(1)
+                    : birthPayload.toString();
+
+            // 6-bit encode + null terminator
+            String birthBits = encode6Bit(birthText) + "000000";
+            int birthPadBits = (16 - (birthBits.length() % 16)) % 16;
+            for (int i = 0; i < birthPadBits; i++)
+                birthBits += '0';
+            String birthPayloadHex = bitsToHex(birthBits);
+            int birthPayloadWords = birthBits.length() / 16;
+
+            // Birth record: header(2) + payload + CRC(1)
+            int birthRecordSize = 2 + birthPayloadWords + 1;
+            int birthRecordType = 0x00;
+            int birthDrVersion = 1;
+            int birthBdVersion = 3;
+            String birthHeader = String.format("%04X%04X", birthRecordSize,
+                    (birthRecordType << 8) | (birthDrVersion << 5) | birthBdVersion);
+            String birthDataNoCrc = birthHeader + birthPayloadHex;
+            int birthCrc = calculateCrc16Ccitt(birthDataNoCrc);
+            String birthRecordHex = birthDataNoCrc + String.format("%04X", birthCrc);
+
+            Log.i(TAG, "📝 Birth Record: " + birthRecordSize + " words, payload: " + birthText);
+
+            // === 2. Build Lifecycle Record (pre-allocated, empty) ===
+            int lifecyclePayloadWords = 8; // Minimal allocation (PNR+EXP+TDN)
+            int lifecycleRecordSize = 2 + lifecyclePayloadWords + 1;
+            int lifecycleRecordType = 0x04;
+            String lifecycleHeader = String.format("%04X%04X", lifecycleRecordSize,
+                    (lifecycleRecordType << 8) | (birthDrVersion << 5) | birthBdVersion);
+
+            // Empty payload (all zeros)
+            StringBuilder lifecyclePayloadHex = new StringBuilder();
+            for (int i = 0; i < lifecyclePayloadWords * 4; i++) {
+                lifecyclePayloadHex.append("0");
+            }
+
+            String lifecycleDataNoCrc = lifecycleHeader + lifecyclePayloadHex.toString();
+            int lifecycleCrc = calculateCrc16Ccitt(lifecycleDataNoCrc);
+            String lifecycleRecordHex = lifecycleDataNoCrc + String.format("%04X", lifecycleCrc);
+
+            Log.i(TAG, "📝 Lifecycle Record: " + lifecycleRecordSize + " words (pre-allocated, empty)");
+
+            // === 3. Calculate addresses ===
+            int headerWords = 4;
+            int rdWords = 4; // 2 RDs × 2 words each
+            int birthAddress = headerWords + rdWords; // Word 8
+            int lifecycleAddress = birthAddress + birthRecordSize; // After birth
+            int trailerWords = 2;
+            int totalWords = lifecycleAddress + lifecycleRecordSize + trailerWords;
+
+            Log.i(TAG, "📝 Layout: Header(4) + RDs(4) + Birth@" + birthAddress +
+                    "(" + birthRecordSize + ") + Life@" + lifecycleAddress +
+                    "(" + lifecycleRecordSize + ") + Trailer(2) = " + totalWords + " words");
+
+            // === 4. Build ToC Header ===
+            int dsfid = 0x1E00;
+            int tocMajor = 4;
+            int tocMinor = 2;
+            int tagType = 0x0001; // Dual-Record
+            int ataClass = 1;
+            int flags = 0x08; // CRC present
+            int tocHeaderSize = 4;
+            int rdSize = 2;
+
+            String w0 = String.format("%04X", dsfid);
+            int word1 = ((tocMinor & 0x7) << 13) | ((tocMajor & 0xF) << 9)
+                    | ((tagType & 0xF) << 5) | (ataClass & 0x1F);
+            String w1 = String.format("%04X", word1);
+            int word2 = ((flags & 0xFF) << 8) | ((tocHeaderSize & 0xF) << 4) | (rdSize & 0xF);
+            String w2 = String.format("%04X", word2);
+            String w3 = String.format("%04X", totalWords);
+
+            // === 5. Build Record Descriptors ===
+            // RD #1: Lifecycle (per spec, written first)
+            String rd1 = String.format("%04X%04X", lifecycleAddress, (lifecycleRecordType << 8) | 0x00);
+            // RD #2: Birth (written second)
+            String rd2 = String.format("%04X%04X", birthAddress, (birthRecordType << 8) | 0x00);
+
+            // === 6. Build ToC Trailer ===
+            int recordCount = 2;
+            String trailerWord1 = String.format("%04X", recordCount);
+            String tocData = w0 + w1 + w2 + w3 + rd1 + rd2 + trailerWord1;
+            int tocCrc = calculateCrc16Ccitt(tocData);
+            String trailerWord2 = String.format("%04X", tocCrc);
+
+            // === 7. Assemble complete USER memory ===
+            StringBuilder userMemHex = new StringBuilder();
+            userMemHex.append(w0).append(w1).append(w2).append(w3); // Header
+            userMemHex.append(rd1).append(rd2); // RDs
+            userMemHex.append(birthRecordHex); // Birth record
+            userMemHex.append(lifecycleRecordHex); // Lifecycle record
+            userMemHex.append(trailerWord1).append(trailerWord2); // Trailer
+
+            Log.i(TAG, "📝 Total USER memory: " + totalWords + " words (" +
+                    (totalWords * 2) + " bytes)");
+            Log.i(TAG, "📝 USER hex (first 64 chars): " +
+                    userMemHex.substring(0, Math.min(64, userMemHex.length())) + "...");
+
+            // === 8. Write to tag ===
+            String accessPwd = "00000000";
+            int bank = 3; // USER memory
+            int ptr = 0;
+
+            // Check if tag has enough memory
+            if (totalWords > 128) {
+                Log.e(TAG, "❌ DUAL-RECORD: Total size too large (" + totalWords + " words). Try smaller Lifecycle allocation.");
+                return false;
+            }
+            
+            // Write in chunks if too large (some tags don't support large block writes)
+            boolean success = true;
+            final String fullHex = userMemHex.toString();
+            final int maxChunkWords = 32; // Max words per write
+            
+            if (totalWords > maxChunkWords) {
+                Log.i(TAG, "📝 Writing in chunks (" + totalWords + " words, " + maxChunkWords + " per chunk)");
+                
+                int wordsWritten = 0;
+                while (wordsWritten < totalWords && success) {
+                    int chunkSize = Math.min(maxChunkWords, totalWords - wordsWritten);
+                    int hexOffset = wordsWritten * 4; // 4 hex chars per word
+                    int hexLength = chunkSize * 4;
+                    
+                    String chunkHex = fullHex.substring(hexOffset, Math.min(hexOffset + hexLength, fullHex.length()));
+                    
+                    Log.i(TAG, "  Writing chunk: offset=" + wordsWritten + " words, size=" + chunkSize + " words");
+                    success = mReader.writeData(accessPwd, bank, wordsWritten, chunkSize, chunkHex);
+                    
+                    if (!success) {
+                        Log.e(TAG, "  ❌ Chunk write failed at offset " + wordsWritten);
+                        break;
+                    }
+                    
+                    wordsWritten += chunkSize;
+                    
+                    // Small delay between chunks
+                    try { Thread.sleep(50); } catch (Exception e) {}
+                }
+                
+                if (success) {
+                    Log.i(TAG, "  ✅ All chunks written successfully (" + wordsWritten + " words)");
+                }
+            } else {
+                Log.i(TAG, "📝 Writing single block (" + totalWords + " words)");
+                success = mReader.writeData(accessPwd, bank, ptr, totalWords, fullHex);
+            }
+
+            if (success) {
+                Log.i(TAG, "✅ DUAL-RECORD: Write successful! Total: " + totalWords + " words");
+                // TODO: Permalock Birth record + ToC Header + RDs
+                // lockMemoryRange(bank, birthAddress, birthAddress + birthRecordSize - 1);
+                // lockMemoryRange(bank, 0, headerWords + rdWords - 1);
+            } else {
+                Log.e(TAG, "❌ DUAL-RECORD: Write failed! Check:");
+                Log.e(TAG, "  - Tag has enough USER memory (need " + totalWords + " words = " + (totalWords * 2) + " bytes)");
+                Log.e(TAG, "  - Tag is not locked");
+                Log.e(TAG, "  - Tag is in reader field");
+            }
+
+            return success;
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error writing Dual-Record: " + e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Helper: Convert bit string to hex
+     */
+    private String bitsToHex(String bits) {
+        StringBuilder hex = new StringBuilder();
+        for (int i = 0; i < bits.length(); i += 4) {
+            String chunk = bits.substring(i, Math.min(i + 4, bits.length()));
+            while (chunk.length() < 4)
+                chunk += '0'; // Pad if needed
+            hex.append(Integer.toHexString(Integer.parseInt(chunk, 2)).toUpperCase(Locale.ROOT));
+        }
+        return hex.toString();
+    }
+
+    /**
+     * Update Lifecycle Record in a Dual-Record tag (ATA Spec 2020.1)
+     * Only updates the rewritable Lifecycle Record, Birth remains locked
+     */
+    public boolean updateLifecycleRecord(
+            String epcHex,
+            String currentPartNumber,
+            String partModLevel,
+            String expirationDate,
+            String certificateNumber,
+            String lastOverhaulDate) {
+        try {
+            Log.i(TAG, "📝 LIFECYCLE-UPDATE: Starting update for EPC: " + epcHex);
+
+            // === 1. Read existing USER memory ===
+            String accessPwd = "00000000";
+            String existingUserHex = mReader.readData(accessPwd, RFIDWithUHFUART.Bank_USER, 0, 128);
+
+            if (existingUserHex == null || existingUserHex.length() < 16) {
+                Log.e(TAG, "❌ LIFECYCLE-UPDATE: Failed to read existing USER memory");
+                return false;
+            }
+
+            // === 2. Parse ToC Header to find Lifecycle RD ===
+            if (!existingUserHex.substring(0, 4).equals("1E00")) {
+                Log.e(TAG, "❌ LIFECYCLE-UPDATE: Not an ATA tag (DSFID != 0x1E00)");
+                return false;
+            }
+
+            // Parse header words
+            int w1 = Integer.parseInt(existingUserHex.substring(4, 8), 16);
+            int tagType = (w1 >> 5) & 0xF;
+            if (tagType != 0x0001) {
+                Log.e(TAG, "❌ LIFECYCLE-UPDATE: Not a Dual-Record tag (type=" + tagType + ")");
+                return false;
+            }
+
+            // Parse RD #1 (Lifecycle) at word 4
+            int lifecycleAddr = Integer.parseInt(existingUserHex.substring(16, 20), 16);
+            int lifecycleTypeFlags = Integer.parseInt(existingUserHex.substring(20, 24), 16);
+            int lifecycleType = (lifecycleTypeFlags >> 8) & 0xFF;
+
+            if (lifecycleType != 0x04) {
+                Log.e(TAG, "❌ LIFECYCLE-UPDATE: RD #1 is not Lifecycle (type=" + lifecycleType + ")");
+                return false;
+            }
+
+            Log.i(TAG, "📝 Found Lifecycle Record at word " + lifecycleAddr);
+
+            // === 3. Read existing Lifecycle Record to get size ===
+            int lifecycleRecordOffset = lifecycleAddr * 4; // Convert word to hex offset
+            int lifecycleRecordSize = Integer.parseInt(
+                    existingUserHex.substring(lifecycleRecordOffset, lifecycleRecordOffset + 4), 16);
+
+            Log.i(TAG, "📝 Existing Lifecycle size: " + lifecycleRecordSize + " words");
+
+            // === 4. Build new Lifecycle payload ===
+            StringBuilder lifecyclePayload = new StringBuilder();
+            if (currentPartNumber != null && !currentPartNumber.isEmpty())
+                lifecyclePayload.append("PNR ").append(currentPartNumber).append("*");
+            if (partModLevel != null && !partModLevel.isEmpty())
+                lifecyclePayload.append("PML ").append(partModLevel).append("*");
+            if (expirationDate != null && !expirationDate.isEmpty())
+                lifecyclePayload.append("EXP ").append(expirationDate).append("*");
+            if (certificateNumber != null && !certificateNumber.isEmpty())
+                lifecyclePayload.append("TDN ").append(certificateNumber).append("*");
+            if (lastOverhaulDate != null && !lastOverhaulDate.isEmpty())
+                lifecyclePayload.append("OVD ").append(lastOverhaulDate).append("*");
+
+            // Remove leading "*"
+            String lifecycleText = lifecyclePayload.length() > 0 && lifecyclePayload.charAt(0) == '*'
+                    ? lifecyclePayload.substring(1)
+                    : lifecyclePayload.toString();
+
+            // 6-bit encode
+            String lifecycleBits = encode6Bit(lifecycleText) + "000000"; // null terminator
+
+            // Pad to fill existing record size (preserve pre-allocated size)
+            int payloadWords = lifecycleRecordSize - 3; // size - header(2) - CRC(1)
+            int requiredBits = payloadWords * 16;
+            while (lifecycleBits.length() < requiredBits) {
+                lifecycleBits += '0';
+            }
+            if (lifecycleBits.length() > requiredBits) {
+                Log.e(TAG, "❌ LIFECYCLE-UPDATE: Payload too large for pre-allocated space!");
+                return false;
+            }
+
+            String lifecyclePayloadHex = bitsToHex(lifecycleBits);
+
+            // === 5. Build new Lifecycle Record (preserve record size) ===
+            int drVersion = 1;
+            int bdVersion = 3;
+            String lifecycleHeader = String.format("%04X%04X", lifecycleRecordSize,
+                    (0x04 << 8) | (drVersion << 5) | bdVersion);
+
+            String lifecycleDataNoCrc = lifecycleHeader + lifecyclePayloadHex;
+            int lifecycleCrc = calculateCrc16Ccitt(lifecycleDataNoCrc);
+            String newLifecycleRecordHex = lifecycleDataNoCrc + String.format("%04X", lifecycleCrc);
+
+            Log.i(TAG, "📝 New Lifecycle payload: " + lifecycleText);
+
+            // === 6. Write only Lifecycle Record (partial USER memory write) ===
+            int bank = 3; // USER
+            int ptr = lifecycleAddr; // Start at Lifecycle record address
+            int wordCount = lifecycleRecordSize;
+
+            boolean success = mReader.writeData(accessPwd, bank, ptr, wordCount, newLifecycleRecordHex);
+
+            if (success) {
+                Log.i(TAG, "✅ LIFECYCLE-UPDATE: Update successful!");
+            } else {
+                Log.e(TAG, "❌ LIFECYCLE-UPDATE: Write failed!");
+            }
+
+            return success;
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error updating Lifecycle: " + e.getMessage(), e);
             return false;
         }
     }
@@ -1293,6 +1693,80 @@ public class UHFHelper {
                 }
             }
         }
+    }
+
+    public synchronized String readUserMemoryForTid(String tidHex) {
+        Log.i(TAG, "🔍 readUserMemoryForTid for: " + tidHex);
+        if (mReader == null) {
+            Log.e(TAG, "mReader is null in readUserMemoryForTid");
+            return "";
+        }
+        if (tidHex == null || tidHex.isEmpty()) {
+            Log.w(TAG, "Empty TID provided to readUserMemoryForTid");
+            return "";
+        }
+        boolean wasRunning = isStart;
+        final String accessPwd = "00000000";
+        try {
+            if (wasRunning) {
+                mReader.stopInventory();
+                isStart = false;
+                Thread.sleep(80);
+            }
+            clearFilter();
+
+            int tidBits = tidHex.length() * 4;
+            int totalWords = peekUserWordsWithTidFilter(tidHex, tidBits);
+            String userHex = mReader.readData(accessPwd,
+                    RFIDWithUHFUART.Bank_TID, 0, tidBits, tidHex,
+                    RFIDWithUHFUART.Bank_USER, 0, totalWords);
+
+            if (userHex != null && userHex.length() >= 16) {
+                Log.i(TAG, "✅ readUserMemoryForTid success (" + (userHex.length() / 4) + " words)");
+                return userHex;
+            } else {
+                Log.w(TAG, "❌ readUserMemoryForTid returned empty");
+                return "";
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "❌ readUserMemoryForTid error: " + e.getMessage());
+            return "";
+        } finally {
+            try {
+                clearFilter();
+            } catch (Exception ignore) {
+            }
+            if (wasRunning) {
+                try {
+                    mReader.startInventoryTag();
+                    isStart = true;
+                    new TagThread().start();
+                } catch (Exception ignore) {
+                }
+            }
+        }
+    }
+
+    private boolean isTidValid(String tid) {
+        return tid != null && !tid.isEmpty()
+                && !tid.equals("000000000000000000000000")
+                && !tid.equals("00000000000000000000000000000000");
+    }
+
+    private String normalizeTid(String tid) {
+        if (isTidValid(tid)) {
+            return tid;
+        }
+        try {
+            String tidDirect = mReader.readData("00000000", RFIDWithUHFUART.Bank_TID, 0, 6);
+            Log.i(TAG, "🔍 DIRECT-TID: Result: '" + tidDirect + "'");
+            if (isTidValid(tidDirect)) {
+                return tidDirect;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "❌ DIRECT-TID: Failed: " + e.getMessage());
+        }
+        return tid;
     }
 
     private int parseUserWordCount(String headerHex) {

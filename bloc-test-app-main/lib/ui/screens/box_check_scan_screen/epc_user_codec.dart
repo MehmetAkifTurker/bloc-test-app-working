@@ -204,79 +204,89 @@ String _hexToBinary(String hexValue) {
   return b.toString();
 }
 
-/// ============== 6-bit ASCII (ATA Spec benzeri) ==============
-const Map<String, String> ASCII6_MAP = {
-  "000000": "NUL",
-  "000001": "A",
-  "000010": "B",
-  "000011": "C",
-  "000100": "D",
-  "000101": "E",
-  "000110": "F",
-  "000111": "G",
-  "001000": "H",
-  "001001": "I",
-  "001010": "J",
-  "001011": "K",
-  "001100": "L",
-  "001101": "M",
-  "001110": "N",
-  "001111": "O",
-  "010000": "P",
-  "010001": "Q",
-  "010010": "R",
-  "010011": "S",
-  "010100": "T",
-  "010101": "U",
-  "010110": "V",
-  "010111": "W",
-  "011000": "X",
-  "011001": "Y",
-  "011010": "Z",
-  "011011": "[",
-  "011100": "\\",
-  "011101": "]",
-  "011110": "^",
-  "011111": "_",
-  "110000": "0",
-  "110001": "1",
-  "110010": "2",
-  "110011": "3",
-  "110100": "4",
-  "110101": "5",
-  "110110": "6",
-  "110111": "7",
-  "111000": "8",
-  "111001": "9",
-  "111111": "?",
-  "100001": "!",
-  "100011": "#",
-  "100100": "\$",
-  "100101": "%",
-  "100110": "&",
-  "100111": "'",
-  "101000": "(",
-  "101001": ")",
-  "101010": "*",
-  "101011": "+",
-  "101100": ",",
-  "101101": "-",
-  "101110": ".",
-  "101111": "/",
-  "111010": ":",
-  "111011": ";",
-  "111100": "<",
-  "111101": "=",
-  "111110": ">",
-  "100000": " "
+/// ============== 6-bit ASCII (ATA Spec 2000 Appendix B - Table 25) ==============
+/// This maps 6-bit binary codes (000000-111111) to their corresponding ASCII characters
+/// Per ATA Spec: ASCII 32-63 map to 6-bit by dropping upper 2 bits (001xxxxx → 1xxxxx)
+///               ASCII 64-95 map to 6-bit by dropping upper 2 bits (010xxxxx → 0xxxxx)
+const Map<String, String> ascii6Map = {
+  // 6-bit 000000-011111 (decimal 0-31) → ASCII 64-95 (uppercase letters + symbols)
+  "000000": "\x00", // NUL - used as terminator
+  "000001": "A", // 65
+  "000010": "B", // 66
+  "000011": "C", // 67
+  "000100": "D", // 68
+  "000101": "E", // 69
+  "000110": "F", // 70
+  "000111": "G", // 71
+  "001000": "H", // 72
+  "001001": "I", // 73
+  "001010": "J", // 74
+  "001011": "K", // 75
+  "001100": "L", // 76
+  "001101": "M", // 77
+  "001110": "N", // 78
+  "001111": "O", // 79
+  "010000": "P", // 80
+  "010001": "Q", // 81
+  "010010": "R", // 82
+  "010011": "S", // 83
+  "010100": "T", // 84
+  "010101": "U", // 85
+  "010110": "V", // 86
+  "010111": "W", // 87
+  "011000": "X", // 88
+  "011001": "Y", // 89
+  "011010": "Z", // 90
+  "011011": "[", // 91
+  "011100": "\\", // 92
+  "011101": "]", // 93
+  "011110": "^", // 94
+  "011111": "_", // 95
+
+  // 6-bit 100000-111111 (decimal 32-63) → ASCII 32-63 (space, punctuation, digits)
+  "100000": " ", // 32 Space
+  "100001": "!", // 33
+  "100010": "\"", // 34
+  "100011": "#", // 35
+  "100100": "\$", // 36
+  "100101": "%", // 37
+  "100110": "&", // 38
+  "100111": "'", // 39
+  "101000": "(", // 40
+  "101001": ")", // 41
+  "101010": "*", // 42
+  "101011": "+", // 43
+  "101100": ",", // 44
+  "101101": "-", // 45
+  "101110": ".", // 46
+  "101111": "/", // 47
+  "110000": "0", // 48
+  "110001": "1", // 49
+  "110010": "2", // 50
+  "110011": "3", // 51
+  "110100": "4", // 52
+  "110101": "5", // 53
+  "110110": "6", // 54
+  "110111": "7", // 55
+  "111000": "8", // 56
+  "111001": "9", // 57
+  "111010": ":", // 58
+  "111011": ";", // 59
+  "111100": "<", // 60
+  "111101": "=", // 61
+  "111110": ">", // 62
+  "111111": "?", // 63
 };
 
 String _decodeSixBitString(String bits) {
   final sb = StringBuffer();
   for (int i = 0; i + 6 <= bits.length; i += 6) {
     final chunk = bits.substring(i, i + 6);
-    final ch = ASCII6_MAP[chunk] ?? "?";
-    if (ch != "NUL") sb.write(ch);
+    final ch = ascii6Map[chunk] ?? "?";
+    // Skip NUL and other control characters (0x00-0x1F)
+    if (ch.codeUnitAt(0) > 0x1F) {
+      sb.write(ch);
+    }
   }
   return sb.toString();
 }
@@ -615,6 +625,11 @@ Map<String, dynamic> decodeUserMemory(String hex) {
     tocHeader = AtaTocHeader.fromWords(words);
   } catch (_) {}
 
+  final bool dsfidOk = tocHeader != null
+      ? tocHeader.dsfid == 0x1E00
+      : (words.isNotEmpty && (words[0] & 0xFFFF) == 0x1E00);
+  if (!dsfidOk) return {};
+
   int ataMemoryWords = tocHeader?.ataMemoryWords ?? words.length;
   if (ataMemoryWords < 0) ataMemoryWords = 0;
   if (ataMemoryWords > words.length) ataMemoryWords = words.length;
@@ -627,30 +642,69 @@ Map<String, dynamic> decodeUserMemory(String hex) {
   if (headerHexLen < 0) headerHexLen = 0;
   if (headerHexLen > ataHex.length) headerHexLen = ataHex.length;
 
-  const int trailerWords = 2;
-  final bool hasTrailer = ataWords.length >= trailerWords;
-  final int tocRecordCount =
-      hasTrailer ? (ataWords[ataWords.length - 2] & 0xFFFF) : 0;
+  final bool pointer32Bit = tocHeader?.pointer32Bit ?? false;
+  int descriptorEntryWords = tocHeader?.recordDescriptorWords ?? 0;
+  if (descriptorEntryWords == 0 && pointer32Bit) {
+    descriptorEntryWords = 3;
+  }
+  final int minDescriptorWords = pointer32Bit ? 3 : 2;
+  final bool hasRecordDescriptors = descriptorEntryWords >= minDescriptorWords;
+  if (!hasRecordDescriptors) {
+    descriptorEntryWords = 0;
+  }
+
+  int trailerWords;
+  if (hasRecordDescriptors) {
+    trailerWords = 2; // Number of records + CRC (even if CRC=0)
+  } else {
+    trailerWords = (tocHeader?.crcPresent ?? false) ? 1 : 0;
+  }
+  if (trailerWords > ataWords.length) trailerWords = 0;
+
+  final bool hasTrailer = ataWords.length >= trailerWords && trailerWords > 0;
+  final int tocRecordCount = hasTrailer && trailerWords >= 2
+      ? (ataWords[ataWords.length - 2] & 0xFFFF)
+      : 0;
   final int tocCrc = hasTrailer ? (ataWords.last & 0xFFFF) : 0;
 
-  final int descriptorEntryWords = tocHeader?.recordDescriptorWords ??
-      (tocHeader?.pointer32Bit == true ? 3 : 2);
-  final bool pointer32Bit = tocHeader?.pointer32Bit ?? false;
+  final int usableWordsEnd =
+      math.max(headerWords, ataWords.length - trailerWords);
 
-  int descriptorWordBudget = ataWords.length - trailerWords - headerWords;
-  if (descriptorWordBudget < 0) descriptorWordBudget = 0;
-  int descriptorWordCount = 0;
-  if (descriptorEntryWords > 0 && descriptorWordBudget > 0) {
-    if (tocRecordCount > 0) {
-      descriptorWordCount = math.min(
-        tocRecordCount * descriptorEntryWords,
-        descriptorWordBudget,
-      );
-    } else {
-      descriptorWordCount = descriptorWordBudget;
+  int descriptorWordsUsed = 0;
+  final List<AtaRecordDescriptor> descriptors = [];
+  if (hasRecordDescriptors &&
+      descriptorEntryWords > 0 &&
+      headerWords + descriptorEntryWords <= usableWordsEnd) {
+    int cursor = headerWords;
+    // When trailer record count is 0 (tag commissioning incomplete), scan more aggressively
+    final int maxRdScan = tocRecordCount > 0
+        ? tocRecordCount
+        : math.min(20, (usableWordsEnd - headerWords) ~/ descriptorEntryWords);
+
+    while (cursor + descriptorEntryWords <= usableWordsEnd &&
+        descriptors.length < maxRdScan) {
+      final seg = ataWords.sublist(cursor, cursor + descriptorEntryWords);
+      final desc = _parseRecordDescriptor(seg, pointer32Bit);
+      if (desc == null) break;
+
+      // Relaxed validation when tocRecordCount == 0 (commissioning incomplete)
+      final int minValidAddress = tocRecordCount > 0
+          ? headerWords + (descriptors.length + 1) * descriptorEntryWords
+          : headerWords;
+
+      if (desc.recordAddress < minValidAddress) {
+        cursor += descriptorEntryWords;
+        continue;
+      }
+      if (desc.recordAddress >= usableWordsEnd) break;
+
+      descriptors.add(desc);
+      descriptorWordsUsed += descriptorEntryWords;
+      cursor += descriptorEntryWords;
     }
   }
-  final int descriptorHexLen = descriptorWordCount * 4;
+
+  final int descriptorHexLen = descriptorWordsUsed * 4;
   final descriptorHex = descriptorHexLen > 0
       ? ataHex.substring(
           headerHexLen,
@@ -664,57 +718,29 @@ Map<String, dynamic> decodeUserMemory(String hex) {
       ? ''
       : ataHex.substring(payloadStartHex, payloadEndHex);
 
-  String payloadText =
-      _normalizePayloadText(_decodeSixBitPayload(payloadHex).trimRight());
-  Map<String, String> fields = _parsePayloadFields(payloadText);
+  String payloadText = '';
+  Map<String, String> fields = {};
+  if (!hasRecordDescriptors) {
+    payloadText =
+        _normalizePayloadText(_decodeSixBitPayload(payloadHex).trimRight());
+    fields = _parsePayloadFields(payloadText);
 
-  if (fields.isEmpty) {
-    final asciiText =
-        _normalizePayloadText(_decodeAsciiPayload(payloadHex).trim());
-    final asciiFields = _parsePayloadFields(asciiText);
-    if (asciiFields.isNotEmpty) {
-      payloadText = asciiText;
-      fields = asciiFields;
-    }
-  }
-
-  final List<AtaRecordDescriptor> descriptors = [];
-  if (descriptorWordCount > 0 && descriptorEntryWords > 0) {
-    final int descriptorStartWord = headerWords;
-    final int descriptorAreaEndWord = descriptorStartWord + descriptorWordCount;
-    final int maxDescriptors = descriptorWordCount ~/ descriptorEntryWords;
-    final int recordLoopCount = tocRecordCount > 0
-        ? math.min(tocRecordCount, maxDescriptors)
-        : maxDescriptors;
-
-    for (int i = 0; i < recordLoopCount; i++) {
-      final int startWord = descriptorStartWord + i * descriptorEntryWords;
-      final int endWord = startWord + descriptorEntryWords;
-
-      if (endWord > descriptorAreaEndWord ||
-          endWord > ataWords.length - trailerWords) {
-        break;
+    if (fields.isEmpty) {
+      final asciiText =
+          _normalizePayloadText(_decodeAsciiPayload(payloadHex).trim());
+      final asciiFields = _parsePayloadFields(asciiText);
+      if (asciiFields.isNotEmpty) {
+        payloadText = asciiText;
+        fields = asciiFields;
       }
-
-      final seg = ataWords.sublist(startWord, endWord);
-      final desc = _parseRecordDescriptor(seg, pointer32Bit);
-      if (desc == null) {
-        break;
-      }
-
-      if (desc.recordAddress <= headerWords ||
-          desc.recordAddress >= ataWords.length - trailerWords) {
-        break;
-      }
-
-      descriptors.add(desc);
     }
   }
 
   final List<AtaDecodedRecord> decodedRecords = [];
   final Map<String, _PrioritizedField> mergedFields = {};
+
+  // Try RD-driven decoding first
   if (descriptors.isNotEmpty) {
-    // Sort descriptors by record address (high memory records come first)
     final sortedDescriptors = descriptors.toList()
       ..sort((a, b) => a.recordAddress.compareTo(b.recordAddress));
 
@@ -727,9 +753,10 @@ Map<String, dynamic> decodeUserMemory(String hex) {
         tocHeader,
         trailerWords,
       );
-      if (record.sizeWords == 0 || record.payloadHex.isEmpty) {
-        continue;
+      if (record.sizeWords == 0) {
+        continue; // Skip truly invalid records
       }
+      // Include even if payload is empty (e.g., pre-allocated Lifecycle)
       decodedRecords.add(record);
       final priority = _recordPriority(desc.recordType);
       record.fields.forEach((key, value) {
@@ -740,14 +767,69 @@ Map<String, dynamic> decodeUserMemory(String hex) {
         }
       });
     }
-    if (mergedFields.isNotEmpty) {
-      fields
-        ..clear()
-        ..addEntries(mergedFields.entries.map(
-          (e) => MapEntry(e.key, e.value.value),
-        ));
-      payloadText = decodedRecords.map((r) => r.payloadText).join('\n');
+  }
+
+  // Fallback: scan for records manually if RDs are missing/invalid
+  if (decodedRecords.isEmpty && hasRecordDescriptors) {
+    final int searchStart = headerWords + math.max(descriptorWordsUsed, 6);
+    final int searchEnd = ataWords.length - trailerWords;
+    final List<int> usableWords = ataWords.sublist(0, searchEnd);
+
+    int cursor = searchStart;
+    while (cursor + 3 < searchEnd) {
+      final word0 = ataWords[cursor];
+      if (word0 < 3 || word0 > (searchEnd - cursor)) {
+        cursor++;
+        continue;
+      }
+      final word1 = ataWords[cursor + 1];
+      final recordType = (word1 >> 8) & 0xFF;
+      // Valid record types: 0x00-0x04
+      if (recordType > 4) {
+        cursor++;
+        continue;
+      }
+
+      // Found potential record - create synthetic descriptor
+      final syntheticDesc = AtaRecordDescriptor(
+        recordAddress: cursor,
+        recordType: recordType,
+        rawFlags: 0,
+        eightBitEncoding: false,
+        correctedBirth: false,
+      );
+
+      final record = _decodeRecord(
+        usableWords,
+        syntheticDesc,
+        tocHeader,
+        trailerWords,
+      );
+
+      if (record.sizeWords > 0 && record.payloadHex.isNotEmpty) {
+        decodedRecords.add(record);
+        final priority = _recordPriority(recordType);
+        record.fields.forEach((key, value) {
+          if (value.isEmpty) return;
+          final existing = mergedFields[key];
+          if (existing == null || priority < existing.priority) {
+            mergedFields[key] = _PrioritizedField(value, priority);
+          }
+        });
+        cursor += word0; // Skip to end of this record
+      } else {
+        cursor++;
+      }
     }
+  }
+
+  if (mergedFields.isNotEmpty) {
+    fields
+      ..clear()
+      ..addEntries(mergedFields.entries.map(
+        (e) => MapEntry(e.key, e.value.value),
+      ));
+    payloadText = decodedRecords.map((r) => r.payloadText).join('\n');
   }
 
   return {
@@ -870,14 +952,44 @@ AtaDecodedRecord _decodeRecord(
       words.sublist(payloadStartWord, payloadEndWord).map(_hexWord).toList();
   final payloadHex = payloadWords.join();
 
-  final String payloadText;
+  final String asciiText =
+      _normalizePayloadText(_decodeAsciiPayload(payloadHex).trim());
+  final Map<String, String> asciiFields = _parsePayloadFields(asciiText);
+
+  String payloadText;
+  Map<String, String> payloadFields;
+
   if (descriptor.eightBitEncoding) {
-    payloadText = _normalizePayloadText(_decodeAsciiPayload(payloadHex).trim());
+    payloadText = asciiText;
+    payloadFields = asciiFields;
   } else {
-    payloadText =
+    final String sixBitText =
         _normalizePayloadText(_decodeSixBitPayload(payloadHex).trimRight());
+    final Map<String, String> sixBitFields = _parsePayloadFields(sixBitText);
+
+    bool useAscii = false;
+    if (asciiFields.isNotEmpty && sixBitFields.isEmpty) {
+      useAscii = true;
+    } else if (asciiFields.length > sixBitFields.length) {
+      useAscii = true;
+    } else {
+      const criticalTeis = ['PNR', 'PNO', 'DMF', 'MFR', 'SER'];
+      for (final key in criticalTeis) {
+        if (asciiFields.containsKey(key) && !sixBitFields.containsKey(key)) {
+          useAscii = true;
+          break;
+        }
+      }
+    }
+
+    if (useAscii) {
+      payloadText = asciiText;
+      payloadFields = asciiFields;
+    } else {
+      payloadText = sixBitText;
+      payloadFields = sixBitFields;
+    }
   }
-  final payloadFields = _parsePayloadFields(payloadText);
 
   return AtaDecodedRecord(
     descriptor: descriptor,
@@ -914,8 +1026,12 @@ String _decodeSixBitPayload(String hex) {
       break;
     }
     started = true;
-    final ch = ASCII6_MAP[c] ?? '?';
-    sb.write(ch);
+    final ch = ascii6Map[c] ?? '?';
+    // Skip control characters (0x00-0x1F) except common ones
+    final code = ch.codeUnitAt(0);
+    if (code > 0x1F || code == 0x09 || code == 0x0A || code == 0x0D) {
+      sb.write(ch);
+    }
   }
   return sb.toString();
 }

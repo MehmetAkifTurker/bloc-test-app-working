@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+enum ScanTriggerMode { barcode, rfid }
+
 class RfidC72Plugin {
   static const MethodChannel _channel = MethodChannel('rfid_c72_plugin');
   static const MethodChannel _keyEventChannel =
@@ -14,6 +16,10 @@ class RfidC72Plugin {
   static bool _holdScan = false; // tuş basılı mı?
   static bool _loopRunning = false; // loop açık mı?
   static bool _innerScanActive = false; // tek tarama in-flight mi?
+  static bool _physicalTriggerHeld = false;
+  static ScanTriggerMode _triggerMode = ScanTriggerMode.barcode;
+  static Future<void> Function()? _rfidTriggerDown;
+  static Future<void> Function()? _rfidTriggerUp;
   static bool _isScanKey(int code) => const {131, 132, 293, 294}.contains(code);
 
   // --- DEBUG STREAM ---
@@ -200,6 +206,16 @@ class RfidC72Plugin {
     return tagInfo;
   }
 
+  static Future<String?> readSingleTagMeta() async {
+    final String? tagInfo = await _channel.invokeMethod('readSingleTagMeta');
+    return tagInfo;
+  }
+
+  static Future<String?> readUserMemoryForTid(String tidHex) async {
+    return _channel
+        .invokeMethod<String>('readUserMemoryForTid', {'tid': tidHex});
+  }
+
   static Future<String?> diagnosticReadSingleTag() async {
     final String? diagnostic =
         await _channel.invokeMethod('diagnosticReadSingleTag');
@@ -239,18 +255,21 @@ class RfidC72Plugin {
       case 'onKeyDown':
         {
           final int keyCode = (call.arguments as int?) ?? -1;
-          debugPrint('RFID onKeyDown key=$keyCode');
           if (!_isScanKey(keyCode)) return;
-          _holdScan = true;
-          await _startBarcodeLoop();
+          if (_physicalTriggerHeld) return;
+          _physicalTriggerHeld = true;
+          debugPrint('RFID onKeyDown key=$keyCode');
+          await _dispatchTriggerDown();
           break;
         }
       case 'onKeyUp':
         {
           final int keyCode = (call.arguments as int?) ?? -1;
-          debugPrint('RFID onKeyUp   key=$keyCode');
           if (!_isScanKey(keyCode)) return;
-          await _stopBarcodeLoop();
+          if (!_physicalTriggerHeld) return;
+          _physicalTriggerHeld = false;
+          debugPrint('RFID onKeyUp   key=$keyCode');
+          await _dispatchTriggerUp();
           break;
         }
       default:
@@ -273,6 +292,24 @@ class RfidC72Plugin {
       'serialNumber': serialNumber,
       'manufactureDate': manufactureDate,
       'expireDate': expireDate,
+    });
+  }
+
+  static Future<bool?> updateLifecycleRecord({
+    required String epcHex,
+    String? currentPartNumber,
+    String? partModLevel,
+    String? expirationDate,
+    String? certificateNumber,
+    String? lastOverhaulDate,
+  }) {
+    return _channel.invokeMethod<bool>('updateLifecycleRecord', {
+      'epcHex': epcHex,
+      'currentPartNumber': currentPartNumber,
+      'partModLevel': partModLevel,
+      'expirationDate': expirationDate,
+      'certificateNumber': certificateNumber,
+      'lastOverhaulDate': lastOverhaulDate,
     });
   }
 
@@ -423,18 +460,21 @@ class RfidC72Plugin {
       case 'onKeyDown':
         {
           final int keyCode = (call.arguments as int?) ?? -1;
-          debugPrint('RFID onKeyDown key=$keyCode');
           if (!_isScanKey(keyCode)) return;
-          _holdScan = true;
-          await _startBarcodeLoop();
+          if (_physicalTriggerHeld) return;
+          _physicalTriggerHeld = true;
+          debugPrint('RFID onKeyDown key=$keyCode');
+          await _dispatchTriggerDown();
           break;
         }
       case 'onKeyUp':
         {
           final int keyCode = (call.arguments as int?) ?? -1;
-          debugPrint('RFID onKeyUp   key=$keyCode');
           if (!_isScanKey(keyCode)) return;
-          await _stopBarcodeLoop();
+          if (!_physicalTriggerHeld) return;
+          _physicalTriggerHeld = false;
+          debugPrint('RFID onKeyUp   key=$keyCode');
+          await _dispatchTriggerUp();
           break;
         }
     }
@@ -446,5 +486,55 @@ class RfidC72Plugin {
     _log('Key handler attached (global)');
     _keyEventChannel.setMethodCallHandler(_handleKeyEventNoCtx);
     _handlerRegistered = true;
+  }
+
+  static void registerRfidTriggerHandlers({
+    Future<void> Function()? onTriggerDown,
+    Future<void> Function()? onTriggerUp,
+  }) {
+    _rfidTriggerDown = onTriggerDown;
+    _rfidTriggerUp = onTriggerUp;
+  }
+
+  static void clearRfidTriggerHandlers() {
+    _rfidTriggerDown = null;
+    _rfidTriggerUp = null;
+  }
+
+  static Future<void> setTriggerMode(ScanTriggerMode mode) async {
+    if (_triggerMode == mode) return;
+    if (mode == ScanTriggerMode.rfid) {
+      await _stopBarcodeLoop();
+    } else {
+      _holdScan = false;
+    }
+    _triggerMode = mode;
+    _physicalTriggerHeld = false;
+    _log('Trigger mode set to $_triggerMode');
+  }
+
+  static Future<void> _dispatchTriggerDown() async {
+    if (_triggerMode == ScanTriggerMode.barcode) {
+      _holdScan = true;
+      await _startBarcodeLoop();
+      return;
+    }
+    if (_rfidTriggerDown != null) {
+      await _rfidTriggerDown!.call();
+    } else {
+      _log('Trigger down ignored: no RFID handler registered');
+    }
+  }
+
+  static Future<void> _dispatchTriggerUp() async {
+    if (_triggerMode == ScanTriggerMode.barcode) {
+      await _stopBarcodeLoop();
+      return;
+    }
+    if (_rfidTriggerUp != null) {
+      await _rfidTriggerUp!.call();
+    } else {
+      _log('Trigger up ignored: no RFID handler registered');
+    }
   }
 }

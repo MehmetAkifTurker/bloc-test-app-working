@@ -91,6 +91,7 @@ import io.flutter.plugin.common.MethodChannel;
 public class MainActivity extends FlutterActivity {
     private static final String CHANNEL = "com.example.my_rfid_plugin/key_events";
     private MethodChannel keyChannel;
+    private boolean scanKeyHeld = false;
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
@@ -104,47 +105,29 @@ public class MainActivity extends FlutterActivity {
     }
 
     @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        Log.d("MainActivity", "Key down: " + keyCode);
-        if (isScanKey(keyCode) && keyChannel != null) {
-            keyChannel.invokeMethod("onKeyDown", keyCode);
-            return true; // olayı tükettik
-        }
-        return super.onKeyDown(keyCode, event);
-    }
-
-    @Override
-    public boolean onKeyUp(int keyCode, KeyEvent event) {
-        Log.d("MainActivity", "Key up: " + keyCode);
-        if (isScanKey(keyCode) && keyChannel != null) {
-            keyChannel.invokeMethod("onKeyUp", keyCode);
-            return true; // olayı tükettik
-        }
-        return super.onKeyUp(keyCode, event);
-    }
-
-    @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         final int code = event.getKeyCode();
         final int action = event.getAction();
 
-        // Geçici: tüm tuşları görmek için açın
-        // Log.v("MainActivity", "dispatch: code=" + code + " action=" + action);
-
-        if (isScanKey(code)) {
-            if (action == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+        if (isScanKey(code) && keyChannel != null) {
+            if (action == KeyEvent.ACTION_DOWN) {
+                if (scanKeyHeld) {
+                    return true;
+                }
+                scanKeyHeld = true;
                 Log.d("MainActivity", "Key down: " + code);
-                if (keyChannel != null)
-                    keyChannel.invokeMethod("onKeyDown", code);
-                return true; // olayı tükettik
+                keyChannel.invokeMethod("onKeyDown", code);
+                return true;
             } else if (action == KeyEvent.ACTION_UP) {
+                if (!scanKeyHeld) {
+                    return true;
+                }
+                scanKeyHeld = false;
                 Log.d("MainActivity", "Key up: " + code);
-                if (keyChannel != null)
-                    keyChannel.invokeMethod("onKeyUp", code);
-                return true; // olayı tükettik
+                keyChannel.invokeMethod("onKeyUp", code);
+                return true;
             }
         }
         return super.dispatchKeyEvent(event);
     }
-
 }
