@@ -298,6 +298,13 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 break;
             }
 
+            case "readUserMemoryForEpcFull": {
+                String epc = call.argument("epc");
+                String userMemory = UHFHelper.getInstance().readUserMemoryForEpcFull(epc);
+                result.success(userMemory);
+                break;
+            }
+
             case "diagnosticReadSingleTag": {
                 String diagnostic = UHFHelper.getInstance().diagnosticReadSingleTag();
                 result.success(diagnostic);
@@ -350,7 +357,7 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
 
             case "readUserMemoryForEpc": {
                 String epc = call.argument("epc");
-                String userMemory = UHFHelper.getInstance().readUserMemoryForEpcStrict(epc);
+                String userMemory = UHFHelper.getInstance().readUserMemoryForEpcWithFilter(epc);
                 result.success(userMemory);
                 break;
             }

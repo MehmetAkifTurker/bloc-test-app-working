@@ -1,8 +1,8 @@
+// RFID Manager - Turkish Airlines
+// ATA Spec 2000 Compliant RFID Tag Management Application
+
 plugins {
     id "com.android.application"
-    // START: FlutterFire Configuration
-    // id 'com.google.gms.google-services'
-    // END: FlutterFire Configuration
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
 }
@@ -48,10 +48,10 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // Application ID (package name)
         applicationId "com.example.water_boiler_rfid_labeler"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
+        // RFID Manager - Turkish Airlines
+        // ATA Spec 2000 compliant RFID tag management
         minSdkVersion 23
         //minSdkVersion flutter.minSdkVersion
         targetSdkVersion 34

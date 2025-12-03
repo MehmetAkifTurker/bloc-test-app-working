@@ -1,18 +1,18 @@
+// RFID Manager - Native RFID Plugin
+// Part of Turkish Airlines RFID Management System
 group = "com.example.my_rfid_plugin"
-version = "1.0-SNAPSHOT"
+version = "1.0.0"
 
 buildscript {
     ext.kotlin_version = "1.9.22"
     repositories {
         google()
         mavenCentral()
-        
     }
 
     dependencies {
-        //classpath("com.android.tools.build:gradle:7.3.0")
-        // classpath("com.android.tools.build:gradle:8.5.0")
-        
+        // Android Gradle Plugin - required for com.android.library
+        classpath("com.android.tools.build:gradle:8.1.0")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
     }
 }
@@ -21,7 +21,6 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        
     }
 }
 

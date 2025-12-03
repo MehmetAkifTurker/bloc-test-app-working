@@ -1,5 +1,7 @@
-// // lib/rfid/codec/epc_user_codec.dart
-// library epc_user_codec;
+// lib/ui/screens/box_check_scan_screen/epc_user_codec.dart
+//
+// ATA Spec 2000 RFID Tag Data Decoder
+// Supports: EPC decoding, USER memory decoding, ToC parsing, Record extraction
 
 // /// --- HEX <-> BİNARY yardımcıları ---
 // String _hexToBinary(String hexValue) {
@@ -192,6 +194,7 @@
 // lib/ui/screens/box_check_scan_screen/epc_user_codec.dart
 library epc_user_codec;
 
+import 'dart:developer' as developer;
 import 'dart:math' as math;
 
 /// ============== HEX <-> BINARY ==============
@@ -598,7 +601,7 @@ DecodedEpcData decodeEpc(String epcHex) {
     );
   } catch (e) {
     // Return a default structure for non-compliant or corrupted EPCs
-    print('EPC decode error for $epcHex: $e');
+    // Silent error - log only in debug mode
     return DecodedEpcData(
       headerBits: '00000000',
       filterValue: 0,
@@ -897,7 +900,18 @@ AtaDecodedRecord _decodeRecord(
   final bool timestampIncluded = tocHeader?.timestampIncluded ?? false;
 
   final int startWord = descriptor.recordAddress;
+
+  // Debug: Log for Lifecycle records (Type=0x04)
+  final bool isLifecycle = descriptor.recordType == 0x04;
+  if (isLifecycle) {
+    developer.log(
+        '🔍 LIFECYCLE DECODE: startWord=$startWord, words.length=${words.length}');
+  }
+
   if (startWord < 0 || startWord >= words.length) {
+    if (isLifecycle) {
+      developer.log('❌ LIFECYCLE: Invalid startWord');
+    }
     return AtaDecodedRecord(
       descriptor: descriptor,
       sizeWords: 0,
@@ -909,7 +923,15 @@ AtaDecodedRecord _decodeRecord(
 
   final int recordSize =
       startWord < words.length ? (words[startWord] & 0xFFFF) : 0;
+  if (isLifecycle) {
+    developer.log(
+        '🔍 LIFECYCLE: recordSize=$recordSize, baseOverhead=$baseOverhead');
+  }
   if (recordSize <= baseOverhead || recordSize > (words.length - startWord)) {
+    if (isLifecycle) {
+      developer
+          .log('❌ LIFECYCLE: Invalid recordSize (<=overhead or >available)');
+    }
     return AtaDecodedRecord(
       descriptor: descriptor,
       sizeWords: 0,
@@ -952,9 +974,20 @@ AtaDecodedRecord _decodeRecord(
       words.sublist(payloadStartWord, payloadEndWord).map(_hexWord).toList();
   final payloadHex = payloadWords.join();
 
+  if (isLifecycle) {
+    developer.log('🔍 LIFECYCLE PAYLOAD: ${payloadHex.length ~/ 4} words');
+    developer.log(
+        '🔍 LIFECYCLE HEX: ${payloadHex.length > 64 ? '${payloadHex.substring(0, 64)}...' : payloadHex}');
+  }
+
   final String asciiText =
       _normalizePayloadText(_decodeAsciiPayload(payloadHex).trim());
   final Map<String, String> asciiFields = _parsePayloadFields(asciiText);
+
+  if (isLifecycle) {
+    developer.log('🔍 LIFECYCLE ASCII: $asciiText');
+    developer.log('🔍 LIFECYCLE ASCII Fields: $asciiFields');
+  }
 
   String payloadText;
   Map<String, String> payloadFields;
@@ -966,6 +999,11 @@ AtaDecodedRecord _decodeRecord(
     final String sixBitText =
         _normalizePayloadText(_decodeSixBitPayload(payloadHex).trimRight());
     final Map<String, String> sixBitFields = _parsePayloadFields(sixBitText);
+
+    if (isLifecycle) {
+      developer.log('🔍 LIFECYCLE 6BIT: $sixBitText');
+      developer.log('🔍 LIFECYCLE 6BIT Fields: $sixBitFields');
+    }
 
     bool useAscii = false;
     if (asciiFields.isNotEmpty && sixBitFields.isEmpty) {
@@ -988,6 +1026,11 @@ AtaDecodedRecord _decodeRecord(
     } else {
       payloadText = sixBitText;
       payloadFields = sixBitFields;
+    }
+
+    if (isLifecycle) {
+      developer
+          .log('🔍 LIFECYCLE FINAL: useAscii=$useAscii, fields=$payloadFields');
     }
   }
 

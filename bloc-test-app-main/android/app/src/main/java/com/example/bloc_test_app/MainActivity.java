@@ -116,7 +116,7 @@ public class MainActivity extends FlutterActivity {
                 }
                 scanKeyHeld = true;
                 Log.d("MainActivity", "Key down: " + code);
-                keyChannel.invokeMethod("onKeyDown", code);
+                    keyChannel.invokeMethod("onKeyDown", code);
                 return true;
             } else if (action == KeyEvent.ACTION_UP) {
                 if (!scanKeyHeld) {
@@ -124,7 +124,7 @@ public class MainActivity extends FlutterActivity {
                 }
                 scanKeyHeld = false;
                 Log.d("MainActivity", "Key up: " + code);
-                keyChannel.invokeMethod("onKeyUp", code);
+                    keyChannel.invokeMethod("onKeyUp", code);
                 return true;
             }
         }

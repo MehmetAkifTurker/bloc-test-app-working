@@ -1290,7 +1290,6 @@ import 'dart:io';
 
 import 'package:excel/excel.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // for kDebugMode
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -1299,14 +1298,7 @@ import 'package:water_boiler_rfid_labeler/models/tag_item.dart';
 import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
 import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/epc_user_codec.dart';
 import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/tag_detail_screen.dart';
-import 'package:water_boiler_rfid_labeler/ui/screens/diagnostic_screen.dart';
 
-// Performance: Disable verbose logs in release mode
-void _log(String msg) {
-  if (kDebugMode) {
-    log(msg);
-  }
-}
 
 class FilterOption {
   final int id;
@@ -1354,7 +1346,7 @@ const List<FilterOption> kFilterOptions = [
 ];
 
 class BoxCheckScanScreen extends StatelessWidget {
-  const BoxCheckScanScreen({Key? key}) : super(key: key);
+  const BoxCheckScanScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -1386,8 +1378,6 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   Timer? _scanTimer;
   bool _scanTickBusy = false;
   bool _scanStartedByTrigger = false;
-  // Round-robin index to iterate tags missing USER
-  int _umRoundRobinIndex = 0;
 
   // RF power
   double _powerLevel = 5;
@@ -1404,21 +1394,18 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   FilterOption? _selectedFilter = kFilterAll;
   List<FilterOption> get _filterOptions => [kFilterAll, ...kFilterOptions];
 
-  String _shortId(String value, {int max = 16}) {
-    if (value.length <= max) return value;
-    return '${value.substring(0, max)}...';
-  }
-
   String _identityKey({
     required String epc,
     required String tid,
     required bool validTid,
   }) {
     // Use EPC+TID combination for unique identity
-    // (Even if TID duplicates, EPC+TID combo will be unique)
-    final epcKey = epc.toUpperCase();
-    if (validTid && tid.isNotEmpty) {
-      return '${epcKey}|${tid.toUpperCase()}';
+    // Must match TagItem.uniqueId format exactly (with trim)
+    // Only include TID if SDK marks it as valid AND it's non-empty
+    final epcKey = epc.toUpperCase().trim();
+    final tidKey = tid.trim();
+    if (validTid && tidKey.isNotEmpty) {
+      return '$epcKey|${tidKey.toUpperCase()}';
     }
     return epcKey;
   }
@@ -1469,12 +1456,6 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     _scanStartedByTrigger = false;
   }
 
-  Future<void> _checkIfConnected() async {
-    log("Checking if RFID reader is already connected (BoxCheckScanScreen)...");
-    final bool? connected = await RfidC72Plugin.isConnected;
-    log(connected == true ? "Yes, RFID connected" : "RFID not connected.");
-  }
-
   int? _extractAtaClass(String? userHex) {
     if (userHex == null || userHex.length < 16) return null;
     final d = decodeUserMemory(userHex);
@@ -1484,13 +1465,23 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     return null;
   }
 
+  /// Returns filtered tag list based on selected ATA class filter.
+  /// 
+  /// Priority: Uses ataClass (from USER memory ToC) first, falls back to 
+  /// filterValue (from EPC header) if ataClass is not available.
+  /// This ensures correct filtering even when USER memory hasn't been read yet.
   List<TagItem> get _filteredItems {
     final sel = _selectedFilter;
     if (sel == null || sel.id == kFilterAll.id) {
       return _tagItems;
     }
     final code = sel.id;
-    return _tagItems.where((t) => t.filterValue == code).toList();
+    return _tagItems.where((t) {
+      // Prefer ataClass from USER memory ToC (more accurate)
+      // Fall back to filterValue from EPC header if ataClass not available
+      final effectiveClass = t.ataClass ?? t.filterValue;
+      return effectiveClass == code;
+    }).toList();
   }
 
   Future<void> _readTag() async {
@@ -1515,7 +1506,6 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
           .replaceAll(RegExp(r'\s+'), '')
           .toUpperCase();
       final String tid = (tagInfo['tid'] ?? '').toString().toUpperCase();
-      final String rssi = (tagInfo['rssi'] ?? '').toString();
       final bool validTid = tagInfo['validTid'] == true;
       final String directUserMemory = (tagInfo['userMemory'] ?? '').toString();
 
@@ -1531,10 +1521,29 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       }
 
       final now = DateTime.now();
-      final String identityKey =
-          _identityKey(epc: epcHex, tid: tid, validTid: validTid);
-      final String displayId = (validTid && tid.isNotEmpty) ? tid : epcHex;
-      final int? existingIndex = _tagIndexById[identityKey];
+      final String identityKey = _identityKey(epc: epcHex, tid: tid, validTid: validTid);
+      
+      // Two-phase lookup to handle TID state transitions:
+      // 1. First try exact match (EPC|TID or just EPC)
+      // 2. If not found, search for any tag with matching EPC
+      //    Handles both directions:
+      //    - TID loss: tag had TID before, now missing (EPC|TID -> EPC)
+      //    - TID gain: tag had no TID before, now has one (EPC -> EPC|TID)
+      int? existingIndex = _tagIndexById[identityKey];
+      if (existingIndex == null) {
+        // Exact key not found - search for any existing tag with same EPC
+        // Key format is either "EPC" or "EPC|TID", so we need exact matching
+        final epcUpper = epcHex.toUpperCase().trim();
+        for (final entry in _tagIndexById.entries) {
+          // Check for exact EPC match: key == "EPC" or key == "EPC|..."
+          // Using startsWith alone could match "3B06" with "3B060" incorrectly
+          final key = entry.key;
+          if (key == epcUpper || key.startsWith('$epcUpper|')) {
+            existingIndex = entry.value;
+            break;
+          }
+        }
+      }
       final TagItem? existingItem =
           existingIndex != null ? _tagItems[existingIndex] : null;
       final bool needsUser = !(existingItem?.userRead ?? false);
@@ -1543,41 +1552,45 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
 
       final last = _lastSeen[identityKey];
       if (last != null &&
-          now.difference(last) < const Duration(seconds: 2) &&
+          now.difference(last) < const Duration(milliseconds: 1200) &&
           !needsUser &&
           !hasDirectUser) {
         return;
       }
       _lastSeen[identityKey] = now;
 
-      final bool isNewTag = existingItem == null;
-      if (isNewTag && kDebugMode) {
-        log("✅ NEW-TAG: ${_shortId(displayId)} | EPC: ${_shortId(epcHex)} | USER: ${hasDirectUser ? 'direct' : 'pending'}");
-      }
-
       final decoded = decodeEpc(epcHex);
 
+      // Use USER from inventory if SDK provided it
       String? userHex;
-      bool userUpdatedNow = false;
-
-      // Use direct USER from inventory if available
       if (hasDirectUser) {
         userHex = directUserMemory;
-        userUpdatedNow = true;
-        log("✅ USER(scan) from inventory: ${userHex.substring(0, userHex.length >= 32 ? 32 : userHex.length)}...");
-      } else if (needsUser) {
-        // Fetch USER via EPC-filtered read
-        userHex = await _fetchUserMemory(
-          epcHex: epcHex,
-          tid: tid,
-          validTid: validTid,
-          reason: "scan",
-        );
-        if (userHex != null && userHex.length >= 16) {
-          userUpdatedNow = true;
+        
+        // SDK inventory returns ~61 words. For Lifecycle records (at word 74+),
+        // we need full read. Dynamic read will determine actual size from ToC.
+        // Only skip if we already have substantial data (more than inventory provides)
+        final bool needsFullRead = userHex.length < 300; // ~75 words - more than inventory
+        final bool existingNeedsFullRead = existingItem != null && 
+            (existingItem.userHex?.length ?? 0) < 300;
+        
+        if (needsFullRead || existingNeedsFullRead) {
+          try {
+            // Use EPC filter (unique per tag) instead of TID (may be duplicate)
+            final fullHex = await RfidC72Plugin.readUserMemoryForEpcFull(epcHex);
+            if (fullHex != null && fullHex.length > userHex.length) {
+              userHex = fullHex;
+            } else if (validTid && tid.isNotEmpty && tid.length >= 8) {
+              // Fallback to TID if EPC filter fails
+              final tidHex = await RfidC72Plugin.readUserMemoryForTid(tid);
+              if (tidHex != null && tidHex.length > userHex.length) {
+                userHex = tidHex;
+              }
+            }
+          } catch (_) {
+            // Keep inventory data if full read fails
+          }
         }
       } else {
-        // Use cached USER
         userHex = existingItem?.userHex;
       }
 
@@ -1589,13 +1602,17 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       }
 
       TagItem updatedItem;
+      // Use TID only if SDK marks it as valid AND non-empty
+      // Must match _identityKey logic for consistent tag identification
+      final String? effectiveTid = (validTid && tid.isNotEmpty) ? tid : null;
+      
       if (existingItem == null) {
         updatedItem = TagItem(
           rawEpc: epcHex,
           cage: decoded.cage,
           partNumber: decoded.partNumber,
           serialNumber: decoded.serialNumber,
-          tid: validTid && tid.isNotEmpty ? tid : null,
+          tid: effectiveTid,
           filterValue: decoded.filterValue,
           userRead: userHex != null && userHex.length >= 16,
           userHex: userHex,
@@ -1604,12 +1621,15 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       } else {
         // Check if EPC changed - if so, invalidate cached USER memory
         final epcChanged = existingItem.rawEpc != epcHex;
+        // Always use effectiveTid (not fallback to existingItem.tid) to maintain
+        // consistency with _identityKey. If validTid is false, TID should be null
+        // in both the tag item and the identity key to prevent index mismatch.
         updatedItem = existingItem.copyWith(
           rawEpc: epcHex,
           cage: decoded.cage,
           partNumber: decoded.partNumber,
           serialNumber: decoded.serialNumber,
-          tid: validTid && tid.isNotEmpty ? tid : existingItem.tid,
+          tid: effectiveTid,
           filterValue: decoded.filterValue,
           userRead: epcChanged
               ? (userHex != null && userHex.isNotEmpty)
@@ -1627,40 +1647,6 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     } catch (e) {
       log("❌ Error reading tag: $e");
     }
-  }
-
-  Future<String?> _fetchUserMemory({
-    required String epcHex,
-    required String tid,
-    required bool validTid,
-    required String reason,
-  }) async {
-    // Use EPC-first strategy to avoid issues with duplicate TIDs
-    try {
-      final user = await RfidC72Plugin.readUserMemoryForEpc(epcHex);
-      if (user != null && user.length >= 16) {
-        log("✅ USER($reason) via EPC ${_shortId(epcHex)} → ${user.substring(0, user.length >= 32 ? 32 : user.length)}...");
-        return user;
-      }
-    } catch (e) {
-      log("❌ USER($reason) via EPC failed: $e");
-    }
-
-    // Fallback to TID if EPC read failed
-    if (validTid && tid.isNotEmpty) {
-      try {
-        final user = await RfidC72Plugin.readUserMemoryForTid(tid);
-        if (user != null && user.length >= 16) {
-          log("✅ USER($reason) via TID fallback ${_shortId(tid)} → ${user.substring(0, user.length >= 32 ? 32 : user.length)}...");
-          return user;
-        }
-      } catch (e) {
-        log("❌ USER($reason) via TID fallback failed: $e");
-      }
-    }
-
-    log("❌ USER($reason): No USER memory for EPC ${_shortId(epcHex)}");
-    return null;
   }
 
   void _upsertTag(TagItem tag) {
@@ -1684,12 +1670,12 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
 
   void _toggleScan() {
     if (!_isScanning) {
-      _scanTimer = Timer.periodic(const Duration(milliseconds: 800), (_) async {
+      _scanTimer = Timer.periodic(const Duration(milliseconds: 400), (_) async {
         if (_scanTickBusy) return;
         _scanTickBusy = true;
         try {
           await _readTag();
-          // TID-filtered USER memory reading integrated - no separate polling needed
+          // SDK reads EPC+TID+USER in single operation - very fast!
         } finally {
           _scanTickBusy = false;
         }
@@ -1729,61 +1715,6 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     });
   }
 
-  Future<void> _checkUserMemoryOnce(TagItem item) async {
-    if (item.userRead == true) return;
-    try {
-      log("SCAN: Attempting user memory fetch for EPC: ${item.rawEpc}");
-
-      // Longer delay for new single-tag verification approach
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      final hex = await _fetchUserMemory(
-        epcHex: item.rawEpc,
-        tid: item.tid ?? '',
-        validTid: item.tid?.isNotEmpty == true,
-        reason: "manual",
-      );
-      if (!mounted) return;
-
-      if (hex != null && hex.length >= 16) {
-        setState(() {
-          item.userHex = hex;
-          item.userRead = true;
-          item.ataClass = _extractAtaClass(hex);
-        });
-        log("SCAN: VERIFIED USER read for EPC: ${item.rawEpc}, first 32 chars: ${hex.substring(0, 32)}");
-      } else {
-        log("SCAN: USER read failed for EPC: ${item.rawEpc} - will retry in next round");
-      }
-    } catch (e) {
-      log("SCAN: USER read error for EPC: ${item.rawEpc}: $e");
-    }
-  }
-
-  Future<void> _pollMissingUserMemoryDuringScan({int maxPerTick = 2}) async {
-    if (!_isScanning || _tagItems.isEmpty) return;
-
-    // Find items that need USER memory reading
-    final itemsNeedingUserMemory =
-        _tagItems.where((item) => !item.userRead).toList();
-    if (itemsNeedingUserMemory.isEmpty) {
-      log("SCAN: All tags have verified USER memory data");
-      return;
-    }
-
-    // Process only one item every 2 scan cycles to reduce pressure on new verification approach
-    if (_umRoundRobinIndex % 2 == 0) {
-      final totalItems = itemsNeedingUserMemory.length;
-      final index = (_umRoundRobinIndex ~/ 2) % totalItems;
-      final item = itemsNeedingUserMemory[index];
-
-      log("SCAN: Processing USER verification for EPC: ${item.rawEpc} ($index/${totalItems})");
-      await _checkUserMemoryOnce(item);
-    }
-
-    _umRoundRobinIndex++;
-  }
-
   /// EPC + USER verilerini Excel’e yazıp paylaş
   Future<void> _shareExcelAnywhere() async {
     if (_tagItems.isEmpty) {
@@ -1800,7 +1731,15 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     try {
       final excel = Excel.createExcel();
       final String sheetName = excel.getDefaultSheet() ?? 'Sheet1';
-      final sheet = excel.sheets[sheetName]!;
+      final sheet = excel.sheets[sheetName];
+      if (sheet == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to create Excel sheet')),
+          );
+        }
+        return;
+      }
 
       sheet.appendRow([
         'No',
@@ -2025,9 +1964,8 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   }
 
   Widget _buildButtonRow() {
-    final dense = const EdgeInsets.symmetric(horizontal: 12, vertical: 8);
-    final denseText =
-        const TextStyle(fontSize: 14, fontWeight: FontWeight.w600);
+    const dense = EdgeInsets.symmetric(horizontal: 12, vertical: 8);
+    const denseText = TextStyle(fontSize: 14, fontWeight: FontWeight.w600);
 
     final elevStyle = ElevatedButton.styleFrom(
       padding: dense,

@@ -1,3 +1,6 @@
+// RFID Manager - Root Build Configuration
+// Turkish Airlines - ATA Spec 2000 Compliance
+
 allprojects {
     repositories {
         google()

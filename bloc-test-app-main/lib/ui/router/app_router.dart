@@ -50,13 +50,6 @@ class AppRouter {
     }
   }
 
-  PageRoute _fast(Widget page) => PageRouteBuilder(
-        pageBuilder: (_, __, ___) => page,
-        transitionsBuilder: (_, anim, __, child) =>
-            FadeTransition(opacity: anim, child: child),
-        transitionDuration: const Duration(milliseconds: 150),
-        reverseTransitionDuration: const Duration(milliseconds: 150),
-      );
 }
 
 List<String> pageNames = ['/', '/read', '/write', '/qr'];

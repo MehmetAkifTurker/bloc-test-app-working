@@ -86,6 +86,16 @@ public class UHFHelper {
         };
     }
 
+    /**
+     * Connect to UHF RFID reader and configure for optimal ATA Spec 2000 tag reading.
+     * 
+     * Configures:
+     * - EPC+TID+USER mode (128 words = 512 bytes)
+     * - TagFocus enabled (better multi-tag detection)
+     * - FastID disabled (better TID/USER accuracy)
+     * 
+     * @return true if connection successful, false otherwise
+     */
     public boolean connect() {
         try {
             mReader = RFIDWithUHFUART.getInstance();
@@ -108,36 +118,27 @@ public class UHFHelper {
 
         if (isConnect) {
             try {
-                // CORRECTED: Use InventoryModeEntity to properly configure scanning
-                Log.i(TAG, "🔧 MODE-CONFIG: Configuring proper scanning mode");
-
-                // Simple configuration without complex mode checking
-                Log.i(TAG, "🔧 SIMPLE-SETUP: Configuring for TID+USER reading");
-
-                // Set EPC+TID+USER mode (mode 2)
-                boolean allModeSet = mReader.setEPCAndTIDUserMode(0, 32);
-                Log.i(TAG, "🔧 SET-MODE: EPC+TID+USER mode set result: " + allModeSet);
-
-                // Simple verification
-                Thread.sleep(100);
-                Log.i(TAG, "🔧 SETUP-COMPLETE: TID+USER configuration completed");
-
+                // Configure EPC+TID+USER simultaneous reading
+                // 128 words covers: SRT (32w), DRT (55w), MRT (100+w)
+                boolean allModeSet = mReader.setEPCAndTIDUserMode(0, 128);
+                if (!allModeSet) {
+                    Log.w(TAG, "Failed to set EPC+TID+USER mode");
+                }
+                Thread.sleep(100); // Allow mode to stabilize
             } catch (Exception e) {
-                Log.w(TAG, "🔧 CONFIG: Failed to configure scanning modes: " + e.getMessage());
+                Log.e(TAG, "Failed to configure scanning mode: " + e.getMessage());
             }
 
+            // Enable TagFocus for better multi-tag detection
             try {
                 mReader.setTagFocus(true);
-                Log.i(TAG, "🔧 CONFIG: TagFocus enabled");
             } catch (Exception ignore) {
-                Log.w(TAG, "🔧 CONFIG: TagFocus not available");
             }
 
+            // Disable FastID for accurate TID/USER reading
             try {
-                mReader.setFastID(false); // Disable FastID for better TID/USER reading
-                Log.i(TAG, "🔧 CONFIG: FastID disabled for better TID/USER reading");
+                mReader.setFastID(false);
             } catch (Exception ignore) {
-                Log.w(TAG, "🔧 CONFIG: FastID control not available");
             }
         }
         return isConnect;
@@ -438,6 +439,15 @@ public class UHFHelper {
         }
     }
 
+    /**
+     * Read single tag with EPC, TID, RSSI, and USER memory.
+     * 
+     * Uses SDK's EPC+TID+USER mode (configured in connect() method)
+     * to read all data in one operation. USER memory includes up to 128 words
+     * which accommodates all ATA Spec 2000 tag types.
+     * 
+     * @return JSON string: {"epc":"...", "tid":"...", "rssi":"...", "validTid":true/false, "userMemory":"..."}
+     */
     public synchronized String readSingleTagMeta() {
         if (mReader == null) {
             Log.e(TAG, "mReader is null, cannot readSingleTagMeta");
@@ -450,13 +460,30 @@ public class UHFHelper {
                 Log.d(TAG, "🔍 META-READ: No tag detected");
                 return "";
             }
+            
             String epcHex = info.getEPC();
             String tid = normalizeTid(info.getTid());
             String rssi = info.getRssi();
             boolean validTid = isTidValid(tid);
+            
+            // Get USER memory from inventory (SDK returns it due to EPC+TID+USER mode)
+            String userMemory = info.getUser();
+            if (userMemory == null) {
+                userMemory = "";
+            }
+            
+            int userWords = userMemory.length() / 4;
+            Log.i(TAG, "✅ META-READ: Tag found!");
+            Log.i(TAG, "   EPC: " + epcHex);
+            Log.i(TAG, "   TID: " + (tid != null ? tid.substring(0, Math.min(16, tid.length())) + "..." : "null"));
+            Log.i(TAG, "   USER: " + userWords + " words (" + userMemory.length() + " chars)");
+            if (userMemory.length() > 0) {
+                Log.i(TAG, "   USER[0..32]: " + userMemory.substring(0, Math.min(32, userMemory.length())));
+            }
+            
             return "{\"epc\":\"" + epcHex + "\",\"tid\":\"" + (tid != null ? tid : "") +
                     "\",\"rssi\":\"" + rssi + "\",\"validTid\":" + validTid +
-                    ",\"userMemory\":\"\"}";
+                    ",\"userMemory\":\"" + userMemory + "\"}";
         } catch (Exception e) {
             Log.e(TAG, "Error in readSingleTagMeta: " + e.getMessage());
             return "";
@@ -1695,8 +1722,145 @@ public class UHFHelper {
         }
     }
 
+    /**
+     * Read USER memory dynamically using EPC as filter.
+     * Uses chunked reading (32 words per chunk) for device compatibility.
+     * Reads up to maxWords or until read fails (end of memory).
+     * EPC is unique per tag, so this avoids TID duplicate issues.
+     */
+    public synchronized String readUserMemoryForEpcFull(String epcHex) {
+        Log.i(TAG, "📖 EPC-USER-READ: Reading USER memory (dynamic, chunked) for EPC: " + (epcHex != null && epcHex.length() >= 8 ? epcHex.substring(0, 8) + "..." : epcHex));
+        if (mReader == null) {
+            Log.e(TAG, "mReader is null in readUserMemoryForEpcFull");
+            return "";
+        }
+        if (epcHex == null || epcHex.isEmpty()) {
+            Log.w(TAG, "Empty EPC provided to readUserMemoryForEpcFull");
+            return "";
+        }
+        boolean wasRunning = isStart;
+        final String accessPwd = "00000000";
+        try {
+            if (wasRunning) {
+                mReader.stopInventory();
+                isStart = false;
+                Thread.sleep(80);
+            }
+            clearFilter();
+
+            int epcBits = epcHex.length() * 4;
+            int chunkSize = 32; // Read 32 words at a time
+            int maxWords = 512; // Safety limit (1KB max)
+            StringBuilder fullHex = new StringBuilder();
+            
+            // First read: Get ToC header to determine actual memory size
+            String firstChunk = mReader.readData(accessPwd,
+                    RFIDWithUHFUART.Bank_EPC, 32, epcBits, epcHex,
+                    RFIDWithUHFUART.Bank_USER, 0, chunkSize);
+            
+            if (firstChunk == null || firstChunk.length() < 16) {
+                Log.w(TAG, "📖 EPC-USER-READ: First chunk failed");
+                return "";
+            }
+            
+            fullHex.append(firstChunk);
+            Log.d(TAG, "📖 EPC-USER-READ: Chunk 0 OK (" + (firstChunk.length() / 4) + " words)");
+            
+            // Parse ToC header to get ataMemoryWords (word 3, or words 3-4 for 32-bit)
+            int targetWords = maxWords;
+            if (firstChunk.length() >= 16) { // At least 4 words (ToC header)
+                try {
+                    int w2 = Integer.parseInt(firstChunk.substring(8, 12), 16);
+                    boolean pointer32Bit = (w2 & 0x0400) != 0; // Bit 10 of w2
+                    
+                    if (pointer32Bit && firstChunk.length() >= 20) {
+                        // 32-bit pointer: words 3-4
+                        int w3 = Integer.parseInt(firstChunk.substring(12, 16), 16);
+                        int w4 = Integer.parseInt(firstChunk.substring(16, 20), 16);
+                        targetWords = ((w3 & 0xFFFF) << 16) | (w4 & 0xFFFF);
+                    } else if (firstChunk.length() >= 16) {
+                        // 16-bit pointer: word 3
+                        int w3 = Integer.parseInt(firstChunk.substring(12, 16), 16);
+                        targetWords = w3 & 0xFFFF;
+                    }
+                    
+                    // Sanity check
+                    if (targetWords <= 0 || targetWords > maxWords) {
+                        targetWords = maxWords;
+                    }
+                    Log.i(TAG, "📖 EPC-USER-READ: ToC says " + targetWords + " words");
+                } catch (Exception e) {
+                    Log.w(TAG, "📖 EPC-USER-READ: Could not parse ToC, using max " + maxWords);
+                    targetWords = maxWords;
+                }
+            }
+            
+            // Read remaining chunks with retry
+            int offset = chunkSize;
+            int maxRetries = 3;
+            while (offset < targetWords) {
+                int wordsToRead = Math.min(chunkSize, targetWords - offset);
+                String chunkHex = null;
+                
+                // Retry failed chunks up to maxRetries times
+                for (int retry = 0; retry < maxRetries; retry++) {
+                    chunkHex = mReader.readData(accessPwd,
+                            RFIDWithUHFUART.Bank_EPC, 32, epcBits, epcHex,
+                            RFIDWithUHFUART.Bank_USER, offset, wordsToRead);
+                    
+                    if (chunkHex != null && !chunkHex.isEmpty()) {
+                        break; // Success
+                    }
+                    
+                    if (retry < maxRetries - 1) {
+                        Log.d(TAG, "📖 EPC-USER-READ: Chunk " + (offset / chunkSize) + " retry " + (retry + 1) + "/" + maxRetries);
+                        Thread.sleep(50); // Longer delay before retry
+                    }
+                }
+                
+                if (chunkHex == null || chunkHex.isEmpty()) {
+                    Log.d(TAG, "📖 EPC-USER-READ: Chunk " + (offset / chunkSize) + " failed after " + maxRetries + " attempts at offset " + offset);
+                    break; // End of readable memory
+                }
+                
+                fullHex.append(chunkHex);
+                Log.d(TAG, "📖 EPC-USER-READ: Chunk " + (offset / chunkSize) + " OK (" + (chunkHex.length() / 4) + " words)");
+                
+                // Delay between chunks for stability
+                Thread.sleep(40);
+                offset += chunkSize;
+            }
+
+            String result = fullHex.toString();
+            int wordsRead = result.length() / 4;
+            if (result.length() >= 16) {
+                Log.i(TAG, "✅ EPC-USER-READ success (" + wordsRead + " words" + 
+                      (wordsRead < targetWords ? ", target was " + targetWords : "") + ")");
+                return result;
+            } else {
+                Log.w(TAG, "❌ EPC-USER-READ failed, trying TID fallback");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "❌ EPC-USER-READ error: " + e.getMessage());
+        } finally {
+            try {
+                clearFilter();
+            } catch (Exception ignore) {
+            }
+            if (wasRunning) {
+                try {
+                    mReader.startInventoryTag();
+                    isStart = true;
+                    new TagThread().start();
+                } catch (Exception ignore) {
+                }
+            }
+        }
+        return "";
+    }
+
     public synchronized String readUserMemoryForTid(String tidHex) {
-        Log.i(TAG, "🔍 readUserMemoryForTid for: " + tidHex);
+        Log.i(TAG, "📖 TID-USER-READ: Reading USER memory (dynamic, chunked) for TID: " + (tidHex != null && tidHex.length() >= 8 ? tidHex.substring(0, 8) + "..." : tidHex));
         if (mReader == null) {
             Log.e(TAG, "mReader is null in readUserMemoryForTid");
             return "";
@@ -1716,20 +1880,96 @@ public class UHFHelper {
             clearFilter();
 
             int tidBits = tidHex.length() * 4;
-            int totalWords = peekUserWordsWithTidFilter(tidHex, tidBits);
-            String userHex = mReader.readData(accessPwd,
+            int chunkSize = 32; // Read 32 words at a time
+            int maxWords = 512; // Safety limit (1KB max)
+            StringBuilder fullHex = new StringBuilder();
+            
+            // First read: Get ToC header to determine actual memory size
+            String firstChunk = mReader.readData(accessPwd,
                     RFIDWithUHFUART.Bank_TID, 0, tidBits, tidHex,
-                    RFIDWithUHFUART.Bank_USER, 0, totalWords);
+                    RFIDWithUHFUART.Bank_USER, 0, chunkSize);
+            
+            if (firstChunk == null || firstChunk.length() < 16) {
+                Log.w(TAG, "📖 TID-USER-READ: First chunk failed");
+                return "";
+            }
+            
+            fullHex.append(firstChunk);
+            Log.d(TAG, "📖 TID-USER-READ: Chunk 0 OK (" + (firstChunk.length() / 4) + " words)");
+            
+            // Parse ToC header to get ataMemoryWords
+            int targetWords = maxWords;
+            if (firstChunk.length() >= 16) {
+                try {
+                    int w2 = Integer.parseInt(firstChunk.substring(8, 12), 16);
+                    boolean pointer32Bit = (w2 & 0x0400) != 0;
+                    
+                    if (pointer32Bit && firstChunk.length() >= 20) {
+                        int w3 = Integer.parseInt(firstChunk.substring(12, 16), 16);
+                        int w4 = Integer.parseInt(firstChunk.substring(16, 20), 16);
+                        targetWords = ((w3 & 0xFFFF) << 16) | (w4 & 0xFFFF);
+                    } else if (firstChunk.length() >= 16) {
+                        int w3 = Integer.parseInt(firstChunk.substring(12, 16), 16);
+                        targetWords = w3 & 0xFFFF;
+                    }
+                    
+                    if (targetWords <= 0 || targetWords > maxWords) {
+                        targetWords = maxWords;
+                    }
+                    Log.i(TAG, "📖 TID-USER-READ: ToC says " + targetWords + " words");
+                } catch (Exception e) {
+                    Log.w(TAG, "📖 TID-USER-READ: Could not parse ToC, using max " + maxWords);
+                    targetWords = maxWords;
+                }
+            }
+            
+            // Read remaining chunks with retry
+            int offset = chunkSize;
+            int maxRetries = 3;
+            while (offset < targetWords) {
+                int wordsToRead = Math.min(chunkSize, targetWords - offset);
+                String chunkHex = null;
+                
+                // Retry failed chunks up to maxRetries times
+                for (int retry = 0; retry < maxRetries; retry++) {
+                    chunkHex = mReader.readData(accessPwd,
+                            RFIDWithUHFUART.Bank_TID, 0, tidBits, tidHex,
+                            RFIDWithUHFUART.Bank_USER, offset, wordsToRead);
+                    
+                    if (chunkHex != null && !chunkHex.isEmpty()) {
+                        break; // Success
+                    }
+                    
+                    if (retry < maxRetries - 1) {
+                        Log.d(TAG, "📖 TID-USER-READ: Chunk " + (offset / chunkSize) + " retry " + (retry + 1) + "/" + maxRetries);
+                        Thread.sleep(50); // Longer delay before retry
+                    }
+                }
+                
+                if (chunkHex == null || chunkHex.isEmpty()) {
+                    Log.d(TAG, "📖 TID-USER-READ: Chunk " + (offset / chunkSize) + " failed after " + maxRetries + " attempts at offset " + offset);
+                    break; // End of readable memory
+                }
+                
+                fullHex.append(chunkHex);
+                Log.d(TAG, "📖 TID-USER-READ: Chunk " + (offset / chunkSize) + " OK (" + (chunkHex.length() / 4) + " words)");
+                
+                Thread.sleep(40);
+                offset += chunkSize;
+            }
 
-            if (userHex != null && userHex.length() >= 16) {
-                Log.i(TAG, "✅ readUserMemoryForTid success (" + (userHex.length() / 4) + " words)");
-                return userHex;
+            String result = fullHex.toString();
+            int wordsRead = result.length() / 4;
+            if (result.length() >= 16) {
+                Log.i(TAG, "✅ TID-USER-READ success (" + wordsRead + " words" + 
+                      (wordsRead < targetWords ? ", target was " + targetWords : "") + ")");
+                return result;
             } else {
-                Log.w(TAG, "❌ readUserMemoryForTid returned empty");
+                Log.w(TAG, "❌ TID-USER-READ returned empty");
                 return "";
             }
         } catch (Exception e) {
-            Log.e(TAG, "❌ readUserMemoryForTid error: " + e.getMessage());
+            Log.e(TAG, "❌ TID-USER-READ error: " + e.getMessage());
             return "";
         } finally {
             try {
@@ -2033,6 +2273,40 @@ public class UHFHelper {
 
     public void setTagLocateListener(TagLocateListener listener) {
         this.tagLocateListener = listener;
+    }
+
+    /**
+     * Read USER memory for a specific EPC with EPC filter (up to 128 words for all tag types)
+     * This accommodates: SRT (32w), DRT (55w), MRT (100+w)
+     */
+    public synchronized String readUserMemoryForEpcWithFilter(String epcHex) {
+        if (mReader == null || epcHex == null || epcHex.isEmpty()) {
+            Log.e(TAG, "❌ readUserMemoryForEpc: invalid params");
+            return "";
+        }
+        
+        try {
+            Log.d(TAG, "🔍 Reading USER for EPC: " + epcHex.substring(0, Math.min(16, epcHex.length())) + "...");
+            
+            // Read up to 128 words (512 bytes) from USER memory with EPC filter
+            String userHex = mReader.readData(
+                epcHex,                     // EPC filter
+                RFIDWithUHFUART.Bank_USER,  // USER memory bank
+                0,                           // Start at word 0
+                128                          // Read 128 words (512 bytes)
+            );
+            
+            if (userHex != null && userHex.length() >= 8) {
+                Log.d(TAG, "✅ USER read success: " + (userHex.length() / 4) + " words");
+                return userHex;
+            } else {
+                Log.w(TAG, "⚠️ USER read returned empty");
+                return "";
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "❌ readUserMemoryForEpc failed: " + e.getMessage());
+            return "";
+        }
     }
 
 }

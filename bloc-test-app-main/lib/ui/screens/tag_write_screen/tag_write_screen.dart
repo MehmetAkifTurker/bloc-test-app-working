@@ -196,10 +196,10 @@ const List<FilterOption> kAtaFilterOptions = [
 ];
 
 class TagWriteScreen extends StatefulWidget {
-  const TagWriteScreen({Key? key}) : super(key: key);
+  const TagWriteScreen({super.key});
 
   @override
-  _TagWriteScreenState createState() => _TagWriteScreenState();
+  State<TagWriteScreen> createState() => _TagWriteScreenState();
 }
 
 class _TagWriteScreenState extends State<TagWriteScreen> {
@@ -374,10 +374,15 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     _descList = sp.getStringList(_kDescListKey) ?? _descList;
 
     // seçili değerler listenin içinde mi, değilse ilk elemana düzelt
-    if (!_pnList.contains(_selectedPN)) _selectedPN = _pnList.first;
-    if (!_mfrList.contains(_selectedManufacturer))
+    if (!_pnList.contains(_selectedPN)) {
+      _selectedPN = _pnList.first;
+    }
+    if (!_mfrList.contains(_selectedManufacturer)) {
       _selectedManufacturer = _mfrList.first;
-    if (!_descList.contains(_selectedDesc)) _selectedDesc = _descList.first;
+    }
+    if (!_descList.contains(_selectedDesc)) {
+      _selectedDesc = _descList.first;
+    }
 
     if (mounted) setState(() {});
   }
@@ -596,11 +601,6 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Future<bool> _goHome() async {
-    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-    return false; // bu sayfayı pop etme
   }
 
   @override

@@ -1,13 +1,38 @@
 {
-   "editor.defaultFormatter": "Dart-Code.dart-code",
-   "editor.formatOnSave": true,
-   "java.configuration.updateBuildConfiguration": "automatic",
-   "java.project.sourcePaths": [
-      "my_rfid_plugin"
-   ],
-   "java.import.gradle.java.home": "",
-   "cmake.sourceDirectory": "C:/Users/A_TURKER/Desktop/water_boiler_rfid_labeler/linux",
-   "[java]": {
-      "editor.defaultFormatter": "redhat.java"
-   }
+  // RFID Manager - IDE Configuration
+  
+  // Exclude my_rfid_plugin from Java/Gradle indexing (it's a Flutter plugin)
+  "java.project.sourcePaths": [],
+  "java.configuration.updateBuildConfiguration": "disabled",
+  
+  // Exclude my_rfid_plugin android folder from project explorer
+  "files.exclude": {
+    "**/my_rfid_plugin/android/.gradle": true,
+    "**/my_rfid_plugin/android/build": true,
+    "**/my_rfid_plugin/android/.idea": true
+  },
+  
+  // Flutter settings
+  "dart.flutterSdkPath": null,
+  "dart.lineLength": 120,
+  
+  // Exclude build artifacts from file watcher
+  "files.watcherExclude": {
+    "**/build/**": true,
+    "**/.dart_tool/**": true,
+    "**/.gradle/**": true
+  },
+  
+  // Code formatting
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "Dart-Code.dart-code",
+  "[dart]": {
+    "editor.formatOnSave": true,
+    "editor.selectionHighlight": false
+  },
+  
+  // Auto-fix on save
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit"
+  }
 }

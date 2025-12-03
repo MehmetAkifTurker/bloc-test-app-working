@@ -216,6 +216,12 @@ class RfidC72Plugin {
         .invokeMethod<String>('readUserMemoryForTid', {'tid': tidHex});
   }
 
+  /// Read 128 words of USER memory using EPC as filter (unique per tag)
+  static Future<String?> readUserMemoryForEpcFull(String epcHex) async {
+    return _channel
+        .invokeMethod<String>('readUserMemoryForEpcFull', {'epc': epcHex});
+  }
+
   static Future<String?> diagnosticReadSingleTag() async {
     final String? diagnostic =
         await _channel.invokeMethod('diagnosticReadSingleTag');

@@ -394,10 +394,10 @@ class TagDetailScreen extends StatefulWidget {
   final TagItem tagItem;
   final String userMemoryHex;
   const TagDetailScreen({
-    Key? key,
+    super.key,
     required this.tagItem,
     required this.userMemoryHex,
-  }) : super(key: key);
+  });
 
   @override
   State<TagDetailScreen> createState() => _TagDetailScreenState();
@@ -510,9 +510,8 @@ const Map<String, String> kAtaUserFieldLabels = {
 const Set<String> _kDateKeys = {'DMF', 'EXP', 'DOH', 'DNH', 'OVD'};
 
 // ==================== THEME CONSTANTS ====================
+// Turkish Airlines Brand Colors
 const Color _brandNavy = Color(0xFF003B5C);
-const Color _brandNavyLight = Color(0xFF1A5A7F);
-const Color _accentOrange = Color(0xFFFF6B35);
 const Color _textPrimary = Color(0xFF1A1A1A);
 const Color _textSecondary = Color(0xFF666666);
 const Color _bgLight = Color(0xFFF8F9FA);
@@ -558,11 +557,6 @@ const TextStyle _chipValueStyle = TextStyle(
   color: _brandNavy,
 );
 
-// Spacing
-const double _spacing = 16.0;
-const double _spacingSmall = 8.0;
-const double _spacingLarge = 24.0;
-
 class _TagDetailScreenState extends State<TagDetailScreen> {
   // Locate / ses
   bool _isLocating = false;
@@ -589,14 +583,50 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     super.initState();
     _userHex = widget.userMemoryHex;
 
-    if (_userHex.isNotEmpty && _userHex.length >= 16) {
-      // Use provided user memory data
-      log('DETAIL: Using provided user memory data for EPC: ${widget.tagItem.rawEpc}');
-      _autoFetch = false;
+    // Always try to read full 128 words using TID filter for complete data
+    // SDK inventory only returns ~61 words, but Lifecycle records may start at word 74+
+    _fetchFullUserMemory();
+  }
+  
+  Future<void> _fetchFullUserMemory() async {
+    final epc = widget.tagItem.rawEpc;
+    final tid = widget.tagItem.tid;
+    
+    // Defensive substring - avoid RangeError for short/truncated EPCs
+    final epcPreview = epc.length > 8 ? epc.substring(0, 8) : epc;
+    log('DETAIL: Fetching full 128-word USER memory via EPC filter: $epcPreview...');
+    try {
+      // Try EPC filter first (unique per tag, avoids TID duplicate issues)
+      String? fullHex = await RfidC72Plugin.readUserMemoryForEpcFull(epc);
+      
+      // If EPC filter fails and we have TID, try TID filter as fallback
+      if ((fullHex == null || fullHex.length <= _userHex.length) && 
+          tid != null && tid.isNotEmpty && tid.length >= 8) {
+        final tidPreview = tid.length > 8 ? tid.substring(0, 8) : tid;
+        log('DETAIL: EPC filter failed, trying TID filter: $tidPreview...');
+        fullHex = await RfidC72Plugin.readUserMemoryForTid(tid);
+      }
+      
+      // Early exit if widget disposed during async operations
+      if (!mounted) return;
+      
+      if (fullHex != null && fullHex.length > _userHex.length) {
+        final wordsRead = fullHex.length ~/ 4;
+        log('DETAIL: Got full USER memory: $wordsRead words (was ${_userHex.length ~/ 4})');
+        final validHex = fullHex; // Capture non-null value
+        // Re-check mounted immediately before setState to prevent crash
+        if (!mounted) return;
+        setState(() {
+          _userHex = validHex;
+          _autoFetch = false;
+          widget.tagItem.userHex = validHex;
+          widget.tagItem.userRead = true;
+        });
     } else {
-      // Start auto-read only if no user memory data was provided
-      log('DETAIL: No valid USER memory provided, starting auto-read');
-      _startAutoUserRead();
+        log('DETAIL: Full read returned same or less data, keeping inventory data');
+      }
+    } catch (e) {
+      log('DETAIL: Error fetching full USER memory: $e');
     }
   }
 
@@ -666,85 +696,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     }
   }
 
-  void _decodeAndVerifyUserMemory(String epcPartNumber, String userHex) async {
-    // Always accept user memory data that was passed from scan screen
-    // This prevents mixing up user memory between different tags
-    log('DETAIL: Using provided user memory data for EPC: ${widget.tagItem.rawEpc}');
-    setState(() {
-      _userHex = userHex;
-      widget.tagItem.userHex = userHex;
-      widget.tagItem.userRead = true;
-    });
-    if (userHex.isNotEmpty) {
-      final int words = userHex.length ~/ 4;
-      log('DETAIL: USER raw hex ($words words) => $userHex');
-    }
-
-    // Optional: Log decoded data for debugging
-    final Map<String, dynamic> decoded = decodeUserMemory(userHex);
-    final dynamic fieldsDynamic = decoded['fields'];
-    String serFromUser = '';
-    String mfr = '';
-    if (fieldsDynamic is Map) {
-      serFromUser =
-          (fieldsDynamic['SER'] ?? decoded['SER'] ?? '').toString().trim();
-      mfr = (fieldsDynamic['MFR'] ?? decoded['MFR'] ?? '')
-          .toString()
-          .trim()
-          .toUpperCase();
-      log('DETAIL: USER TEI fields => $fieldsDynamic');
-    } else {
-      serFromUser = (decoded['SER'] ?? '').toString().trim();
-      mfr = (decoded['MFR'] ?? '').toString().trim().toUpperCase();
-    }
-    log('DETAIL: User memory contains - SER: $serFromUser, MFR: $mfr');
-
-    final toc = decoded['tocHeader'];
-    final String descriptorHex =
-        decoded['recordDescriptorHex']?.toString() ?? '';
-    final String payloadHex = decoded['payloadHex']?.toString() ?? '';
-    final int actualWords = userHex.length ~/ 4;
-    final int payloadWords = payloadHex.length ~/ 4;
-    int? expectedWords;
-    int? descriptorWords;
-    if (toc is Map) {
-      expectedWords = int.tryParse('${toc['ataMemoryWords']}');
-      descriptorWords = int.tryParse('${toc['recordDescriptorWords']}');
-    }
-    final wordsSummary = expectedWords == null
-        ? '$actualWords words read'
-        : '$actualWords / $expectedWords words read';
-    log('DETAIL: USER length => $wordsSummary (payload: $payloadWords words)');
-    if (descriptorWords != null) {
-      log('DETAIL: Record descriptor words per header: $descriptorWords');
-    }
-    if (expectedWords != null && actualWords < expectedWords) {
-      log('DETAIL ⚠️ USER data appears truncated — missing ${expectedWords - actualWords} words');
-    }
-    if (descriptorHex.isNotEmpty) {
-      log('DETAIL: RD hex full (${descriptorHex.length ~/ 4} words) => $descriptorHex');
-    }
-    if (payloadHex.isNotEmpty) {
-      log('DETAIL: Payload hex full (${payloadHex.length ~/ 4} words) => $payloadHex');
-    }
-    if (toc is Map) {
-      log('DETAIL: ToC header => version ${toc['tocMajorVersion']}.${toc['tocMinorVersion']}, '
-          'tagType=${toc['ataTagType']} (${toc['ataTagTypeLabel'] ?? 'n/a'}), '
-          'class=${toc['ataClass']} (${toc['ataClassLabel'] ?? 'n/a'}), flags=${toc['flags'] ?? {}}');
-    }
-    final records = decoded['records'];
-    if (records is List) {
-      for (final record in records) {
-        if (record is! Map) continue;
-        final descriptor = record['descriptor'];
-        final typeLabel = descriptor is Map
-            ? (descriptor['recordTypeLabel'] ?? descriptor['recordType'])
-            : 'unknown';
-        final payloadText = (record['payloadText'] ?? '').toString();
-        log('DETAIL: Record $typeLabel payload => $payloadText');
-      }
-    }
-  }
 
   // ---------------- LOCATE + SOUND ----------------
   Future<void> _toggleLocate() async {
@@ -862,8 +813,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     for (final match in reg.allMatches(sanitized)) {
       final key = match.group(1)?.trim().toUpperCase();
       final value = match.group(2)?.trim();
-      if (key == null || key.isEmpty || value == null || value.isEmpty)
+      if (key == null || key.isEmpty || value == null || value.isEmpty) {
         continue;
+      }
       fields[key] = value;
     }
     return fields;
@@ -930,11 +882,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     }
 
     if (lines.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
           color: _bgLight,
-          borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(12),
           border: Border.all(color: _borderLight),
         ),
         child: Text(text.isEmpty ? '-' : text, style: _valueStyle),
@@ -989,8 +941,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
           SizedBox(
             width: 110,
             child: Text('$label:', style: _labelStyle),
@@ -1017,13 +969,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     }
 
     return GestureDetector(
-      onLongPress: () => _copyAll(fullText, label),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
+          onLongPress: () => _copyAll(fullText, label),
+          behavior: HitTestBehavior.opaque,
+          child: Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
+            decoration: BoxDecoration(
           color: _bgLight,
-          borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(12),
           border: Border.all(color: _borderLight),
         ),
         child: Column(
@@ -1037,7 +989,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
                   child: Text(label,
                       style: _cardTitleStyle.copyWith(color: iconColor)),
                 ),
-                Icon(Icons.copy, size: 14, color: _textSecondary),
+                const Icon(Icons.copy, size: 14, color: _textSecondary),
               ],
             ),
             const SizedBox(height: 12),
@@ -1052,9 +1004,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 height: 1.4,
-              ),
-            ),
-          ],
+          ),
+        ),
+      ],
         ),
       ),
     );
@@ -1129,10 +1081,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                const Row(
                   children: [
                     Icon(Icons.qr_code_2, size: 20, color: _brandNavy),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     Text('EPC Payload', style: _cardTitleStyle),
                   ],
                 ),
@@ -1150,7 +1102,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           if (_isDualRecordTag(decodedUser) ||
               _hasMultipleRecords(decodedUser)) ...[
             _buildRecordSections(decodedUser),
-            const SizedBox(height: 16),
+          const SizedBox(height: 16),
           ] else if (hasPayload) ...[
             // Single record - show combined payload
             const Text('User Memory Payload', style: _sectionTitleStyle),
@@ -1655,10 +1607,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       }
 
       String? ovhDateFormatted;
-      if (selectedOvhDate != null) {
-        ovhDateFormatted = '${selectedOvhDate!.year.toString().padLeft(4, '0')}'
-            '${selectedOvhDate!.month.toString().padLeft(2, '0')}'
-            '${selectedOvhDate!.day.toString().padLeft(2, '0')}';
+      final ovh = selectedOvhDate;
+      if (ovh != null) {
+        ovhDateFormatted = '${ovh.year.toString().padLeft(4, '0')}'
+            '${ovh.month.toString().padLeft(2, '0')}'
+            '${ovh.day.toString().padLeft(2, '0')}';
       }
 
       final ok = await RfidC72Plugin.updateLifecycleRecord(
@@ -1679,25 +1632,31 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       if (!mounted) return;
 
       if (ok == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Lifecycle record updated successfully!')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Lifecycle record updated successfully!')),
+          );
+        }
         // Re-read USER memory
         setState(() => _reading = true);
         final newUserHex =
             await RfidC72Plugin.readUserMemoryForEpc(widget.tagItem.rawEpc);
-        if (newUserHex != null && newUserHex.isNotEmpty) {
+        if (newUserHex != null && newUserHex.isNotEmpty && mounted) {
           setState(() {
             _userHex = newUserHex;
             widget.tagItem.userHex = newUserHex;
           });
         }
-        setState(() => _reading = false);
+        if (mounted) {
+          setState(() => _reading = false);
+        }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lifecycle update failed!')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Lifecycle update failed!')),
+          );
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -1766,7 +1725,37 @@ class LocationStatusWidget extends StatelessWidget {
         leading: SizedBox(
           width: 32,
           height: 32,
-          child: Row(
+          child: _SignalBars(activeLevel: activeLevel),
+        ),
+        title: const Text('Location Signal Strength'),
+        subtitle: Text(subtitleText, style: subtitleStyle),
+      ),
+    );
+  }
+}
+
+class _SignalBars extends StatelessWidget {
+  final int activeLevel;
+  
+  const _SignalBars({required this.activeLevel});
+  
+  Color _getBarColor(int level) {
+    if (level > activeLevel) return Colors.grey.shade300;
+    switch (level) {
+      case 1:
+        return Colors.green.shade900;
+      case 2:
+        return Colors.green.shade600;
+      case 3:
+        return Colors.green.shade300;
+      default:
+        return Colors.grey.shade300;
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(3, (i) {
@@ -1778,17 +1767,12 @@ class LocationStatusWidget extends StatelessWidget {
                   width: 7,
                   height: 10.0 + 7.0 * level,
                   decoration: BoxDecoration(
-                    color: getBarColor(level, activeLevel),
+              color: _getBarColor(level),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               );
             }),
-          ),
-        ),
-        title: const Text('Location Signal Strength'),
-        subtitle: Text(subtitleText, style: subtitleStyle),
-      ),
     );
   }
 }

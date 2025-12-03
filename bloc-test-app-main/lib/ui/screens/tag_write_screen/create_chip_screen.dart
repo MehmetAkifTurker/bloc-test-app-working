@@ -192,7 +192,6 @@
 //   }
 // }
 import 'package:flutter/material.dart';
-import 'package:water_boiler_rfid_labeler/java_comm/rfid_c72_plugin.dart';
 import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
 
 /// Mevcut model (değiştirmedik)
@@ -308,7 +307,7 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
 
   bool _lockEpc = false;
   bool _lockUser = false;
-  
+
   // Helper: Apply recommended settings when record type changes
   void _applyRecommendedSettings(String recordType) {
     switch (recordType) {
@@ -361,27 +360,6 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
     Navigator.pop(context, tagType);
   }
 
-  Future<void> _createOnReader() async {
-    if (!_form.currentState!.validate()) return;
-
-    final ok = await RfidC72Plugin.configureChipAta(
-      recordType: _recordTypeKey,
-      epcWords: _epcWords,
-      userWords: _userWords,
-      permalockWords: _userWords == 0 ? 0 : _permalockVal,
-      enablePermalock: _applyPermalock && _userWords > 0 && _permalockVal > 0,
-      lockEpc: _lockEpc,
-      lockUser: _lockUser,
-      accessPwd: '00000000', // gerekirse değiştir
-    );
-
-    final msg = (ok == true)
-        ? 'Chip pre-allocation/lock operation successful.'
-        : 'Operation failed (configureChipAta returned false).';
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
-
   String? _validateName(String? v) =>
       (v == null || v.trim().isEmpty) ? 'Name required' : null;
 
@@ -392,7 +370,7 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
     if (n == null) return 'Numeric';
     if (n < 0) return 'Must be ≥ 0';
     if (n > _userWords) return 'Cannot exceed USER size ($_userWords)';
-    
+
     // Record type specific warnings
     if (_recordTypeUi == 'DRT' && n < 8) {
       return 'DRT requires minimum 8 words (ToC + RDs)';
@@ -402,7 +380,7 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
     }
     return null;
   }
-  
+
   Widget _buildRecommendationRow(String type, String settings) {
     final isSelected = _recordTypeUi == type;
     return Padding(
@@ -575,7 +553,8 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                       children: [
                         const Text(
                           '🔒 Permalock Settings',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 14),
                         ),
                         const SizedBox(height: 4),
                         const Text(
@@ -606,7 +585,7 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     labelText: 'Permalock Range (words)',
-                    helperText: permEnabled 
+                    helperText: permEnabled
                         ? 'Word 0 to ${_permalockVal - 1} will be locked'
                         : null,
                     helperMaxLines: 2,
@@ -657,13 +636,18 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                       children: [
                         const Text(
                           '📋 Recommended Settings',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                         const SizedBox(height: 8),
-                        _buildRecommendationRow('DRT', '64 words USER, 12 permalock'),
-                        _buildRecommendationRow('SRT (Birth)', '16 words USER, 16 permalock (all)'),
-                        _buildRecommendationRow('SRT (Utility)', '16 words USER, 0 permalock'),
-                        _buildRecommendationRow('MRT', '128 words USER, 20 permalock'),
+                        _buildRecommendationRow(
+                            'DRT', '64 words USER, 12 permalock'),
+                        _buildRecommendationRow(
+                            'SRT (Birth)', '16 words USER, 16 permalock (all)'),
+                        _buildRecommendationRow(
+                            'SRT (Utility)', '16 words USER, 0 permalock'),
+                        _buildRecommendationRow(
+                            'MRT', '128 words USER, 20 permalock'),
                       ],
                     ),
                   ),
