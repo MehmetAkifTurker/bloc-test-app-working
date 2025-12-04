@@ -1,207 +1,16 @@
-// import 'package:flutter/material.dart';
-
-// /// Basit model
-// class TagType {
-//   final String name;
-//   final String recordType; // DRT | SRT
-//   final int epcWords; // EPC bank size (words)
-//   final int userWords; // USER bank size (words)
-//   final int permalockWords;
-//   final int defaultFilter; // 0..63 (şimdilik bu sayfada göstermiyoruz)
-
-//   TagType({
-//     required this.name,
-//     required this.recordType,
-//     required this.epcWords,
-//     required this.userWords,
-//     required this.permalockWords,
-//     required this.defaultFilter,
-//   });
-
-//   Map<String, dynamic> toJson() => {
-//         'name': name,
-//         'recordType': recordType,
-//         'epcWords': epcWords,
-//         'userWords': userWords,
-//         'permalockWords': permalockWords,
-//         'defaultFilter': defaultFilter,
-//       };
-
-//   factory TagType.fromJson(Map<String, dynamic> json) => TagType(
-//         name: json['name'],
-//         recordType: json['recordType'],
-//         epcWords: json['epcWords'],
-//         userWords: json['userWords'],
-//         permalockWords: json['permalockWords'],
-//         defaultFilter: json['defaultFilter'],
-//       );
-
-//   @override
-//   String toString() => '$name • $recordType';
-// }
-
-// class TagTypeManagerPage extends StatefulWidget {
-//   const TagTypeManagerPage({super.key});
-
-//   @override
-//   State<TagTypeManagerPage> createState() => _TagTypeManagerPageState();
-// }
-
-// class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
-//   final _form = GlobalKey<FormState>();
-//   final _name = TextEditingController(text: 'My Tag Type');
-
-//   // Sadece kısaltmalar (DRT/SRT)
-//   String _recordType = 'DRT';
-
-//   // Slider değerleri (words)
-//   int _epcWords = 12; // ör: 12 word
-//   int _userWords = 32; // ör: 32 word
-
-//   // Metin girişi bırakıyoruz (istersen slider’a çevirebiliriz)
-//   final _permalock = TextEditingController(text: '8');
-
-//   // Bu sayfada göstermiyoruz; yazma ekranında kullanılacak
-//   static const int _defaultFilterFallback = 14;
-
-//   @override
-//   void dispose() {
-//     _name.dispose();
-//     _permalock.dispose();
-//     super.dispose();
-//   }
-
-//   void _save() {
-//     if (!_form.currentState!.validate()) return;
-
-//     final tagType = TagType(
-//       name: _name.text.trim(),
-//       recordType: _recordType, // 'DRT' ya da 'SRT'
-//       epcWords: _epcWords, // slider
-//       userWords: _userWords, // slider
-//       permalockWords: int.parse(_permalock.text.trim()),
-//       defaultFilter:
-//           _defaultFilterFallback, // şimdilik sabit; yazma sayfasında değiştirilecektir
-//     );
-//     Navigator.pop(context, tagType); // oluşturulan tipi geri döndür
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(title: const Text('Create Tag Type')),
-//       body: SafeArea(
-//         child: Padding(
-//           padding: const EdgeInsets.all(16),
-//           child: Form(
-//             key: _form,
-//             child: ListView(
-//               children: [
-//                 // İsim
-//                 TextFormField(
-//                   controller: _name,
-//                   decoration: const InputDecoration(labelText: 'Name'),
-//                   validator: (v) =>
-//                       (v == null || v.trim().isEmpty) ? 'Name required' : null,
-//                 ),
-//                 const SizedBox(height: 12),
-
-//                 // Record Type (DRT / SRT)
-//                 DropdownButtonFormField<String>(
-//                   value: _recordType,
-//                   decoration: const InputDecoration(labelText: 'Record Type'),
-//                   items: const [
-//                     DropdownMenuItem(
-//                         value: 'DRT', child: Text('Dual Record Type (DRT)')),
-//                     DropdownMenuItem(
-//                         value: 'SRT', child: Text('Single Record Type (SRT)')),
-//                   ],
-//                   onChanged: (v) => setState(() => _recordType = v ?? 'DRT'),
-//                 ),
-//                 const SizedBox(height: 12),
-
-//                 // EPC Size (Slider)
-//                 Text(
-//                   'EPC Size: $_epcWords words',
-//                   style: const TextStyle(fontWeight: FontWeight.w600),
-//                 ),
-//                 Slider(
-//                   value: _epcWords.toDouble(),
-//                   min: 8,
-//                   max: 64,
-//                   divisions: 56, // 8..64 arası her adım 1 word
-//                   label: _epcWords.toString(),
-//                   onChanged: (v) => setState(() => _epcWords = v.toInt()),
-//                 ),
-//                 const SizedBox(height: 8),
-
-//                 // USER Size (Slider)
-//                 Text(
-//                   'USER Size: $_userWords words',
-//                   style: const TextStyle(fontWeight: FontWeight.w600),
-//                 ),
-//                 Slider(
-//                   value: _userWords.toDouble(),
-//                   min: 8,
-//                   max: 128,
-//                   divisions: 120, // 8..128 arası
-//                   label: _userWords.toString(),
-//                   onChanged: (v) => setState(() => _userWords = v.toInt()),
-//                 ),
-//                 const SizedBox(height: 12),
-
-//                 // Permalock (şimdilik TextField)
-//                 TextFormField(
-//                   controller: _permalock,
-//                   keyboardType: TextInputType.number,
-//                   decoration: const InputDecoration(
-//                     labelText: 'Block Permalock (words)',
-//                   ),
-//                   validator: _posInt,
-//                 ),
-
-//                 const SizedBox(height: 20),
-//                 FilledButton.icon(
-//                   onPressed: _save,
-//                   icon: const Icon(Icons.save),
-//                   label: const Text('Save'),
-//                 ),
-//                 const SizedBox(height: 8),
-
-//                 // Not
-//                 const Text(
-//                   'Note:\n'
-//                   '• Filter değeri bu sayfada gizlendi; Tag Write ekranında seçilecektir.\n'
-//                   '• DRT/SRT kısaltmaları kullanılıyor. Gerekirse ileride MRT vb. eklenebilir.\n'
-//                   '• EPC/USER boyutları kaydırıcı ile ayarlanır (words).',
-//                   style: TextStyle(fontSize: 12, color: Colors.grey),
-//                 ),
-//               ],
-//             ),
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-
-//   String? _posInt(String? v) {
-//     if (v == null || v.trim().isEmpty) return 'Required';
-//     final n = int.tryParse(v.trim());
-//     if (n == null || n <= 0) return 'Positive integer';
-//     return null;
-//   }
-// }
+// Create Chip Screen - ATA Spec 2000 Tag Type Configuration
 import 'package:flutter/material.dart';
 import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
 
-/// Mevcut model (değiştirmedik)
+/// Tag Type model for chip configuration
 class TagType {
   final String name;
-  final String recordType; // DRT | SRT
+  final String recordType; // DRT | SRT-B | SRT-U | MRT
   final int epcWords;
   final int userWords;
   final int permalockWords;
   final int defaultFilter;
+  final bool isBuiltIn; // Built-in presets cannot be deleted
 
   TagType({
     required this.name,
@@ -210,6 +19,7 @@ class TagType {
     required this.userWords,
     required this.permalockWords,
     required this.defaultFilter,
+    this.isBuiltIn = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -219,6 +29,7 @@ class TagType {
         'userWords': userWords,
         'permalockWords': permalockWords,
         'defaultFilter': defaultFilter,
+        'isBuiltIn': isBuiltIn,
       };
 
   factory TagType.fromJson(Map<String, dynamic> json) => TagType(
@@ -228,36 +39,130 @@ class TagType {
         userWords: json['userWords'],
         permalockWords: json['permalockWords'],
         defaultFilter: json['defaultFilter'],
+        isBuiltIn: json['isBuiltIn'] ?? false,
       );
 
   @override
   String toString() => '$name • $recordType';
 }
 
+/// Built-in presets per ATA Spec 2000 - cannot be deleted
+const List<Map<String, dynamic>> kBuiltInTagTypes = [
+  {
+    'name': 'DRT Standard',
+    'recordType': 'DRT',
+    'epcWords': 12,
+    'userWords': 128,
+    'permalockWords': 12,
+    'defaultFilter': 14,
+    'isBuiltIn': true,
+  },
+  {
+    'name': 'SRT Birth (Read-Only)',
+    'recordType': 'SRT-B',
+    'epcWords': 12,
+    'userWords': 32,
+    'permalockWords': 32,
+    'defaultFilter': 14,
+    'isBuiltIn': true,
+  },
+  {
+    'name': 'SRT Utility (Rewritable)',
+    'recordType': 'SRT-U',
+    'epcWords': 12,
+    'userWords': 32,
+    'permalockWords': 0,
+    'defaultFilter': 14,
+    'isBuiltIn': true,
+  },
+  {
+    'name': 'MRT Multi-Record',
+    'recordType': 'MRT',
+    'epcWords': 12,
+    'userWords': 512,
+    'permalockWords': 20,
+    'defaultFilter': 14,
+    'isBuiltIn': true,
+  },
+];
+
+/// Chip memory configuration
 class ChipKind {
   final String id;
   final String name;
-
-  /// EPC için izin verilen en fazla bit
   final int epcMaxBits;
-
-  /// USER için izin verilen en fazla bit
   final int userMaxBits;
-  const ChipKind(this.id, this.name,
-      {required this.epcMaxBits, required this.userMaxBits});
+  final String useCase;
+
+  const ChipKind(
+    this.id,
+    this.name, {
+    required this.epcMaxBits,
+    required this.userMaxBits,
+    required this.useCase,
+  });
 
   int get epcMaxWords => (epcMaxBits / 16).floor();
   int get userMaxWords => (userMaxBits / 16).floor();
 }
 
-/// İsterseniz kendi ürün listenize göre burayı genişletin
+/// Available chip memory configurations (powers of 2)
+/// Sorted by USER memory size (largest first)
 const List<ChipKind> kChipKinds = [
-  // Örnekler:
-  ChipKind('64k', '64 kbit',
-      epcMaxBits: 240, userMaxBits: 64 * 1024), // İstediğiniz gibi
-  ChipKind('8k', '8 kbit', epcMaxBits: 240, userMaxBits: 8 * 1024),
-  ChipKind('2k', '2 kbit', epcMaxBits: 240, userMaxBits: 2 * 1024),
-  ChipKind('512b', '512 bit', epcMaxBits: 240, userMaxBits: 512),
+  // Large memory - for MRT
+  ChipKind(
+    '4096w',
+    '64 Kbit (4096 words)',
+    epcMaxBits: 256,
+    userMaxBits: 65536, // 64 kbit = 4096 words
+    useCase: 'MRT - Multi Record',
+  ),
+  
+  // Medium memory - for DRT
+  ChipKind(
+    '1024w',
+    '16 Kbit (1024 words)',
+    epcMaxBits: 256,
+    userMaxBits: 16384, // 16 kbit = 1024 words
+    useCase: 'DRT - Large',
+  ),
+  ChipKind(
+    '512w',
+    '8 Kbit (512 words)',
+    epcMaxBits: 256,
+    userMaxBits: 8192, // 8 kbit = 512 words
+    useCase: 'DRT - Standard',
+  ),
+  ChipKind(
+    '256w',
+    '4 Kbit (256 words)',
+    epcMaxBits: 256,
+    userMaxBits: 4096, // 4 kbit = 256 words
+    useCase: 'DRT - Compact',
+  ),
+  ChipKind(
+    '128w',
+    '2 Kbit (128 words)',
+    epcMaxBits: 256,
+    userMaxBits: 2048, // 2 kbit = 128 words
+    useCase: 'DRT - Minimum',
+  ),
+  
+  // Small memory - for SRT only
+  ChipKind(
+    '64w',
+    '1 Kbit (64 words)',
+    epcMaxBits: 256,
+    userMaxBits: 1024, // 1 kbit = 64 words
+    useCase: 'SRT - Large',
+  ),
+  ChipKind(
+    '32w',
+    '512 bit (32 words)',
+    epcMaxBits: 256,
+    userMaxBits: 512, // 512 bit = 32 words
+    useCase: 'SRT - Standard',
+  ),
 ];
 
 class TagTypeManagerPage extends StatefulWidget {
@@ -272,19 +177,67 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
   static const int _kEpcMin = 8;
   static const int _kEpcMax = 64;
   static const int _kUserMin = 0;
-  static const int _kUserMax = 128;
+  static const int _kUserMax = 1024; // ATA Spec: DRT max 2 Kbyte = 1024 words
 
   ChipKind _chip = kChipKinds.first;
+  
+  /// Get suitable chip options based on record type
+  /// ATA Spec 2000 Requirements:
+  /// - SRT: 32-128 words (512-2048 bits)
+  /// - DRT: 128-1024 words (2048-16384 bits)
+  /// - MRT: 4096+ words (65536+ bits)
+  List<ChipKind> get _suitableChips {
+    switch (_recordTypeUi) {
+      case 'SRT (Birth)':
+      case 'SRT (Utility)':
+        // SRT needs 32-128 words
+        return kChipKinds.where((c) => 
+          c.userMaxWords >= 32 && c.userMaxWords <= 128
+        ).toList();
+      case 'DRT':
+        // DRT needs 128-1024 words
+        return kChipKinds.where((c) => 
+          c.userMaxWords >= 128 && c.userMaxWords <= 1024
+        ).toList();
+      case 'MRT':
+        // MRT needs 4096+ words
+        return kChipKinds.where((c) => c.userMaxWords >= 4096).toList();
+      default:
+        return kChipKinds;
+    }
+  }
+  
+  /// Get recommended chip for current record type
+  ChipKind get _recommendedChip {
+    final suitable = _suitableChips;
+    if (suitable.isEmpty) return kChipKinds.first;
+    
+    switch (_recordTypeUi) {
+      case 'SRT (Birth)':
+      case 'SRT (Utility)':
+        // Prefer 32 words for SRT (minimum required)
+        return suitable.last;
+      case 'DRT':
+        // Prefer 128 words for DRT (minimum required)
+        return suitable.firstWhere(
+          (c) => c.id == '128w',
+          orElse: () => suitable.last,
+        );
+      case 'MRT':
+        // MRT needs largest chip
+        return suitable.first;
+      default:
+        return suitable.first;
+    }
+  }
 
-  /// Kaydırıcıların dinamik üst sınırları (words)
   int get _epcMaxDyn => _chip.epcMaxWords.clamp(_kEpcMin, _kEpcMax);
   int get _userMaxDyn => _chip.userMaxWords.clamp(_kUserMin, _kUserMax);
 
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController(text: 'My Tag Type');
 
-  // STid ekranlarındaki gibi: SRT (Birth) / SRT (Utility) / DRT / MRT
-  String _recordTypeUi = 'DRT'; // UI etiketi
+  String _recordTypeUi = 'DRT';
   String get _recordTypeKey {
     switch (_recordTypeUi) {
       case 'SRT (Birth)':
@@ -300,42 +253,70 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
   }
 
   int _epcWords = 12;
-  int _userWords = 64;
+  int _userWords = 128; // ATA Spec: DRT minimum 128 words
 
   final _permalock = TextEditingController(text: '12');
   bool _applyPermalock = true;
 
-  bool _lockEpc = false;
-  bool _lockUser = false;
-
-  // Helper: Apply recommended settings when record type changes
+  // ATA Spec 2000 Memory Requirements:
+  // SRT (Utility/Birth): 512 bits - 2k bits = 32-128 words
+  // DRT: 2k bits - 2 Kbyte = 128-1024 words  
+  // MRT: 8k bytes+ = 4096+ words
   void _applyRecommendedSettings(String recordType) {
+    int targetUserWords;
+    int targetPermalock;
+    bool enablePermalock;
+    
     switch (recordType) {
       case 'DRT':
-        _epcWords = 12;
-        _userWords = 64; // Birth(~20) + Lifecycle(~30) + overhead(~10)
-        _permalock.text = '12'; // ToC(4) + RDs(4) + partial Birth(4)
-        _applyPermalock = true;
+        targetUserWords = 128;
+        targetPermalock = 12;
+        enablePermalock = true;
         break;
       case 'SRT (Birth)':
-        _epcWords = 12;
-        _userWords = 16; // Küçük birth data için yeterli
-        _permalock.text = '16'; // Tümünü lock et
-        _applyPermalock = true;
+        targetUserWords = 32;
+        targetPermalock = 32;
+        enablePermalock = true;
         break;
       case 'SRT (Utility)':
-        _epcWords = 12;
-        _userWords = 16;
-        _permalock.text = '0'; // Hiç lock etme (rewritable)
-        _applyPermalock = false;
+        targetUserWords = 32;
+        targetPermalock = 0;
+        enablePermalock = false;
         break;
       case 'MRT':
-        _epcWords = 12;
-        _userWords = 128; // Maksimum (çok history için)
-        _permalock.text = '20'; // ToC + RDs + Birth
-        _applyPermalock = true;
+        targetUserWords = 512;
+        targetPermalock = 20;
+        enablePermalock = true;
         break;
+      default:
+        targetUserWords = 128;
+        targetPermalock = 12;
+        enablePermalock = true;
     }
+    
+    // Select recommended chip for this record type
+    _chip = _recommendedChip;
+    
+    // Clamp to chip capacity
+    _epcWords = 12.clamp(_kEpcMin, _epcMaxDyn);
+    _userWords = targetUserWords.clamp(_kUserMin, _userMaxDyn);
+    _permalock.text = targetPermalock.clamp(0, _userWords).toString();
+    _applyPermalock = enablePermalock;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Clamp initial values to chip capacity
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      setState(() {
+        _epcWords = _epcWords.clamp(_kEpcMin, _epcMaxDyn);
+        _userWords = _userWords.clamp(_kUserMin, _userMaxDyn);
+        if (_permalockVal > _userWords) {
+          _permalock.text = '$_userWords';
+        }
+      });
+    });
   }
 
   @override
@@ -351,11 +332,11 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
     if (!_form.currentState!.validate()) return;
     final tagType = TagType(
       name: _name.text.trim(),
-      recordType: _recordTypeKey, // SRT-B / SRT-U / DRT / MRT
+      recordType: _recordTypeKey,
       epcWords: _epcWords,
       userWords: _userWords,
       permalockWords: _userWords == 0 ? 0 : _permalockVal,
-      defaultFilter: 14, // bu ekranda filtre yok; yazma ekranında seçiliyor
+      defaultFilter: 14,
     );
     Navigator.pop(context, tagType);
   }
@@ -370,8 +351,6 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
     if (n == null) return 'Numeric';
     if (n < 0) return 'Must be ≥ 0';
     if (n > _userWords) return 'Cannot exceed USER size ($_userWords)';
-
-    // Record type specific warnings
     if (_recordTypeUi == 'DRT' && n < 8) {
       return 'DRT requires minimum 8 words (ToC + RDs)';
     }
@@ -379,6 +358,205 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
       return 'DRT: leave space for Lifecycle (max ${_userWords - 20})';
     }
     return null;
+  }
+
+  /// Builds record type specific UI settings
+  List<Widget> _buildRecordTypeSpecificSettings(bool permEnabled) {
+    final isUtility = _recordTypeUi == 'SRT (Utility)';
+    final isBirth = _recordTypeUi == 'SRT (Birth)';
+    
+    // SRT (Utility) - No locking, fully rewritable
+    if (isUtility) {
+      return [
+        Card(
+          color: Colors.green.shade50,
+          child: const Padding(
+            padding: EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '✏️ Rewritable Tag',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'SRT (Utility) tags are fully rewritable.\n'
+                  '• No permalock will be applied\n'
+                  '• Data can be updated anytime\n'
+                  '• Suitable for temporary/changeable data',
+                  style: TextStyle(fontSize: 12, color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ];
+    }
+    
+    // SRT (Birth) - All data locked, no configuration needed
+    if (isBirth) {
+      return [
+        Card(
+          color: Colors.orange.shade50,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '🔒 Fully Locked Tag',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'SRT (Birth) tags are fully permalocked.\n'
+                  '• All $_userWords words will be permanently locked\n'
+                  '• Data cannot be modified after creation\n'
+                  '• Suitable for factory-original identity data',
+                  style: const TextStyle(fontSize: 12, color: Colors.black87),
+                ),
+                const SizedBox(height: 8),
+                const Row(
+                  children: [
+                    Icon(Icons.warning_amber, color: Colors.orange, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'This action is PERMANENT and cannot be undone!',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ];
+    }
+    
+    // DRT and MRT - Full configuration options
+    return [
+      Card(
+        color: Colors.blue.shade50,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '🔒 Permalock Settings',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Permalock permanently locks specified word range (CANNOT be unlocked!).',
+                style: TextStyle(fontSize: 11, color: Colors.black87, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              _buildPermalockExplanation(),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 8),
+      SwitchListTile(
+        title: const Text('Enable Permalock'),
+        subtitle: Text(permEnabled
+            ? 'First $_permalockVal words will be locked'
+            : 'Disabled - no area will be locked'),
+        value: _applyPermalock,
+        activeColor: _brandNavy,
+        activeTrackColor: _brandNavy.withOpacity(.35),
+        onChanged: (val) => setState(() => _applyPermalock = val),
+      ),
+      TextFormField(
+        controller: _permalock,
+        enabled: permEnabled,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(
+          labelText: 'Permalock Range (words)',
+          helperText: permEnabled
+              ? 'Word 0 to ${_permalockVal - 1} will be locked'
+              : null,
+          helperMaxLines: 2,
+        ),
+        validator: _validatePermalock,
+      ),
+    ];
+  }
+
+  Widget _buildPermalockExplanation() {
+    // Dynamic explanation based on selected record type
+    final isUtility = _recordTypeUi == 'SRT (Utility)';
+    final isBirth = _recordTypeUi == 'SRT (Birth)';
+    final isMrt = _recordTypeUi == 'MRT';
+    
+    if (isUtility) {
+      return const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('SRT (Utility): No permalock needed',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+          SizedBox(height: 4),
+          Text('• Utility records are rewritable by design\n'
+               '• Used for temporary/updatable data',
+              style: TextStyle(fontSize: 11, color: Colors.black54)),
+        ],
+      );
+    }
+    
+    if (isBirth) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('SRT (Birth): All data permalocked',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange)),
+          const SizedBox(height: 4),
+          Text('• All $_userWords words will be locked\n'
+               '• Birth data is immutable (factory original)',
+              style: const TextStyle(fontSize: 11, color: Colors.black54)),
+        ],
+      );
+    }
+    
+    if (isMrt) {
+      return const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('MRT: ToC + Birth permalocked, History open',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
+          SizedBox(height: 4),
+          Text('• Word 0-1: ToC Header (DSFID, Tag Type, Size)\n'
+               '• Word 2-5: Record Descriptors (RD1-RD2)\n'
+               '• Word 6-19: Birth Record (~14 words)\n'
+               '• Word 20+: CDR/PHR records (rewritable)',
+              style: TextStyle(fontSize: 11, color: Colors.black54)),
+        ],
+      );
+    }
+    
+    // DRT explanation (default)
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('DRT: Why 12 words permalocked?',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
+        SizedBox(height: 4),
+        Text('ATA Spec 2000 Memory Layout:',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+        SizedBox(height: 2),
+        Text('• Word 0-1: ToC Header (DSFID, Tag Type, Size)\n'
+             '• Word 2-3: RD1 - Lifecycle Record Descriptor\n'
+             '• Word 4-5: RD2 - Birth Record Descriptor\n'
+             '• Word 6-11: Birth Record start (Type, Size, MFR, PNR...)',
+            style: TextStyle(fontSize: 11, color: Colors.black54)),
+        SizedBox(height: 4),
+        Text('Total: 12 words locked = Birth protected, Lifecycle open',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green)),
+      ],
+    );
   }
 
   Widget _buildRecommendationRow(String type, String settings) {
@@ -426,25 +604,39 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
         },
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Form(
-            key: _form,
-            child: ListView(
-              children: [
-                TextFormField(
-                  controller: _name,
-                  decoration: const InputDecoration(
-                    labelText: 'Name',
-                    hintText: 'e.g., Galley Equip V1',
+        child: Theme(
+          data: theme.copyWith(
+            colorScheme: theme.colorScheme.copyWith(
+              primary: _brandNavy,
+              secondary: _brandNavy,
+            ),
+            inputDecorationTheme: InputDecorationTheme(
+              focusedBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: _brandNavy, width: 2),
+              ),
+              floatingLabelStyle: const TextStyle(color: _brandNavy),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Form(
+              key: _form,
+              child: ListView(
+                children: [
+                  TextFormField(
+                    controller: _name,
+                    cursorColor: _brandNavy,
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                      hintText: 'e.g., Galley Equip V1',
+                    ),
+                    validator: _validateName,
                   ),
-                  validator: _validateName,
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: _recordTypeUi,
-                  decoration: const InputDecoration(labelText: 'Record Type'),
-                  menuMaxHeight: 260,
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: _recordTypeUi,
+                    decoration: const InputDecoration(labelText: 'Record Type'),
+                    menuMaxHeight: 260,
                   items: const [
                     DropdownMenuItem(
                       value: 'DRT',
@@ -472,34 +664,82 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                   },
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<ChipKind>(
-                  value: _chip,
-                  decoration:
-                      const InputDecoration(labelText: 'Chip Type / Memory'),
-                  menuMaxHeight: 260,
-                  items: kChipKinds
-                      .map((c) => DropdownMenuItem(
-                            value: c,
+                // Show only suitable chips for selected record type
+                if (_suitableChips.length > 1)
+                  DropdownButtonFormField<ChipKind>(
+                    value: _suitableChips.contains(_chip) ? _chip : _suitableChips.first,
+                    decoration: InputDecoration(
+                      labelText: 'Memory Size',
+                      helperText: '${_suitableChips.length} options for $_recordTypeUi',
+                      helperStyle: TextStyle(fontSize: 11, color: Colors.green.shade700),
+                    ),
+                    isExpanded: true,
+                    menuMaxHeight: 320,
+                    items: _suitableChips
+                        .map((c) => DropdownMenuItem(
+                              value: c,
+                              child: Text('${c.name} - ${c.useCase}'),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() {
+                        _chip = v;
+                        if (_epcWords > _epcMaxDyn) _epcWords = _epcMaxDyn;
+                        if (_userWords > _userMaxDyn) _userWords = _userMaxDyn;
+                        if (_permalockVal > _userWords) {
+                          _permalock.text = '$_userWords';
+                        }
+                      });
+                    },
+                  )
+                else if (_suitableChips.isNotEmpty)
+                  Card(
+                    color: Colors.blue.shade50,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.memory, color: _brandNavy),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _suitableChips.first.name,
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                Text(
+                                  _suitableChips.first.useCase,
+                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  Card(
+                    color: Colors.red.shade50,
+                    child: const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning, color: Colors.red),
+                          SizedBox(width: 12),
+                          Expanded(
                             child: Text(
-                                '${c.name}  •  EPC≤${c.epcMaxBits} bits, USER≤${c.userMaxBits} bits'),
-                          ))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v == null) return;
-                    setState(() {
-                      _chip = v;
-
-                      // Seçim değişince mevcut değerleri yeni sınırlara sıkıştır
-                      if (_epcWords > _epcMaxDyn) _epcWords = _epcMaxDyn;
-                      if (_userWords > _userMaxDyn) _userWords = _userMaxDyn;
-
-                      // Permalock değeri USER’a taşsın diye kontrol
-                      if (_permalockVal > _userWords) {
-                        _permalock.text = '$_userWords';
-                      }
-                    });
-                  },
-                ),
+                              'No compatible memory size for this record type',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 Text('EPC Size: $_epcWords words',
                     style: theme.textTheme.titleMedium),
@@ -511,11 +751,11 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                     overlayColor: _brandNavy.withOpacity(.1),
                   ),
                   child: Slider(
-                    value: _epcWords.toDouble(),
+                    value: _epcWords.clamp(_kEpcMin, _epcMaxDyn).toDouble(),
                     min: _kEpcMin.toDouble(),
                     max: _epcMaxDyn.toDouble(),
                     divisions: (_epcMaxDyn - _kEpcMin).clamp(1, 1000),
-                    label: _epcWords.toString(),
+                    label: _epcWords.clamp(_kEpcMin, _epcMaxDyn).toString(),
                     onChanged: (v) => setState(() => _epcWords = v.toInt()),
                   ),
                 ),
@@ -529,11 +769,11 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                     overlayColor: _brandNavy.withOpacity(.1),
                   ),
                   child: Slider(
-                    value: _userWords.toDouble(),
+                    value: _userWords.clamp(_kUserMin, _userMaxDyn).toDouble(),
                     min: _kUserMin.toDouble(),
-                    max: _userMaxDyn.toDouble(), // ⬅ dinamik
+                    max: _userMaxDyn.toDouble(),
                     divisions: (_userMaxDyn - _kUserMin).clamp(1, 1000),
-                    label: _userWords.toString(),
+                    label: _userWords.clamp(_kUserMin, _userMaxDyn).toString(),
                     onChanged: (v) {
                       setState(() {
                         _userWords = v.toInt();
@@ -544,69 +784,8 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                     },
                   ),
                 ),
-                Card(
-                  color: Colors.blue.shade50,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '🔒 Permalock Settings',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Permalock: Permanently locks specified word range (cannot be unlocked!).\n'
-                          '• DRT: ToC + RDs + Birth locked, Lifecycle remains open\n'
-                          '• SRT (Birth): All data locked\n'
-                          '• SRT (Utility): Not locked (rewritable)',
-                          style: TextStyle(fontSize: 11, color: Colors.black87),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  title: const Text('Enable Permalock'),
-                  subtitle: Text(permEnabled
-                      ? 'First $_permalockVal words will be locked'
-                      : 'Disabled - no area will be locked'),
-                  value: _applyPermalock,
-                  activeColor: _brandNavy,
-                  activeTrackColor: _brandNavy.withOpacity(.35),
-                  onChanged: (val) => setState(() => _applyPermalock = val),
-                ),
-                TextFormField(
-                  controller: _permalock,
-                  enabled: permEnabled,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: 'Permalock Range (words)',
-                    helperText: permEnabled
-                        ? 'Word 0 to ${_permalockVal - 1} will be locked'
-                        : null,
-                    helperMaxLines: 2,
-                  ),
-                  validator: _validatePermalock,
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  title: const Text('Lock EPC (after creation)'),
-                  value: _lockEpc,
-                  activeColor: _brandNavy,
-                  activeTrackColor: _brandNavy.withOpacity(.35),
-                  onChanged: (v) => setState(() => _lockEpc = v),
-                ),
-                SwitchListTile(
-                  title: const Text('Lock USER (after creation)'),
-                  value: _lockUser,
-                  activeColor: _brandNavy,
-                  activeTrackColor: _brandNavy.withOpacity(.35),
-                  onChanged: (v) => setState(() => _lockUser = v),
-                ),
+                // Dynamic content based on record type
+                ..._buildRecordTypeSpecificSettings(permEnabled),
                 const SizedBox(height: 20),
                 Row(
                   children: [
@@ -635,19 +814,19 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          '📋 Recommended Settings',
+                          '📋 ATA Spec 2000 Requirements',
                           style: TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                         const SizedBox(height: 8),
                         _buildRecommendationRow(
-                            'DRT', '64 words USER, 12 permalock'),
+                            'DRT', '128+ words (2k bits min), 12 permalock'),
                         _buildRecommendationRow(
-                            'SRT (Birth)', '16 words USER, 16 permalock (all)'),
+                            'SRT (Birth)', '32-128 words, all permalocked'),
                         _buildRecommendationRow(
-                            'SRT (Utility)', '16 words USER, 0 permalock'),
+                            'SRT (Utility)', '32-128 words, 0 permalock'),
                         _buildRecommendationRow(
-                            'MRT', '128 words USER, 20 permalock'),
+                            'MRT', '512+ words (8k bytes min), 20 permalock'),
                       ],
                     ),
                   ),
@@ -661,6 +840,7 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
               ],
             ),
           ),
+        ),
         ),
       ),
     );

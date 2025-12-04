@@ -72,6 +72,20 @@ flutter {
     source '../..'
 }
 
+repositories {
+    flatDir {
+        dirs 'libs'
+    }
+}
+
 dependencies {
-    implementation project(":libs",)
+    // DeviceAPI AAR for RFID reader
+    implementation(name: 'DeviceAPI_ver20220518_release', ext: 'aar')
+    
+    // RxJava for async operations
+    implementation 'io.reactivex.rxjava2:rxandroid:2.1.1'
+    implementation 'io.reactivex.rxjava2:rxjava:2.2.19'
+    
+    // Gson for JSON parsing
+    implementation 'com.google.code.gson:gson:2.8.8'
 }

@@ -1,15 +1,15 @@
 {
   // RFID Manager - IDE Configuration
   
-  // Exclude my_rfid_plugin from Java/Gradle indexing (it's a Flutter plugin)
+  // Disable Java/Gradle auto-configuration for Flutter project
   "java.project.sourcePaths": [],
   "java.configuration.updateBuildConfiguration": "disabled",
+  "java.import.gradle.enabled": false,
   
-  // Exclude my_rfid_plugin android folder from project explorer
+  // Exclude build artifacts from file explorer
   "files.exclude": {
-    "**/my_rfid_plugin/android/.gradle": true,
-    "**/my_rfid_plugin/android/build": true,
-    "**/my_rfid_plugin/android/.idea": true
+    "**/build": true,
+    "**/.gradle": true
   },
   
   // Flutter settings

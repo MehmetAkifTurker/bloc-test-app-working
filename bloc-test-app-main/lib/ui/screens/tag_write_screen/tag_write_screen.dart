@@ -1,154 +1,4 @@
-// import 'dart:developer';
-// import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
-// import 'package:flutter/material.dart';
-// import 'package:water_boiler_rfid_labeler/java_comm/rfid_c72_plugin.dart';
-// import 'package:water_boiler_rfid_labeler/ui/router/bottom_navigation.dart';
-
-// class TagWriteScreen extends StatefulWidget {
-//   const TagWriteScreen({Key? key}) : super(key: key);
-
-//   @override
-//   _TagWriteScreenState createState() => _TagWriteScreenState();
-// }
-
-// class _TagWriteScreenState extends State<TagWriteScreen> {
-//   final TextEditingController serialNumberController = TextEditingController();
-//   String _selectedPN = "D0002-00-00"; // default part number (no fixed limit)
-//   bool _isWriting = false;
-//   bool _isConnected = false;
-
-//   @override
-//   void initState() {
-//     super.initState();
-//     _checkIfConnected();
-//   }
-
-//   Future<void> _checkIfConnected() async {
-//     log("TagWriteScreen: Checking if RFID is already connected...");
-//     final bool? alreadyConnected = await RfidC72Plugin.isConnected;
-//     if (alreadyConnected == true) {
-//       log("TagWriteScreen: Device is already connected!");
-//       setState(() => _isConnected = true);
-//     } else {
-//       log("TagWriteScreen: Not connected; attempting to connect...");
-//       final bool? connectResult = await RfidC72Plugin.connect;
-//       if (connectResult == true) {
-//         log("TagWriteScreen: Connected successfully!");
-//         setState(() => _isConnected = true);
-//       } else {
-//         log("TagWriteScreen: Failed to connect.");
-//       }
-//     }
-//   }
-
-//   Future<void> _writeToTag() async {
-//     if (!_isConnected) {
-//       _showSnackBar("Not connected to the reader. Try again.");
-//       return;
-//     }
-//     final String partNumber = _selectedPN.trim().toUpperCase();
-//     final String serialNumber =
-//         serialNumberController.text.trim().toUpperCase();
-
-//     // Basic validations (you can remove these if you want no limit)
-//     if (partNumber.isEmpty || serialNumber.isEmpty) {
-//       _showSnackBar("Please enter both Part Number and Serial Number.");
-//       return;
-//     }
-//     if (partNumber.length > 32) {
-//       _showSnackBar("Part Number is too long (max 32 chars).");
-//       return;
-//     }
-//     if (serialNumber.length > 30) {
-//       _showSnackBar("Serial Number is too long (max 30 chars).");
-//       return;
-//     }
-
-//     try {
-//       setState(() => _isWriting = true);
-//       // Call the plugin's writeTagADIConstruct2 method.
-//       // The plugin will perform variable‑length encoding internally.
-//       final bool? success = await RfidC72Plugin.writeTagADIConstruct2(
-//         partNumber,
-//         serialNumber,
-//       );
-//       if (success == true) {
-//         _showSnackBar("Tag write successful!");
-//       } else {
-//         _showSnackBar("Tag write failed. Check logs for details.");
-//       }
-//     } catch (e) {
-//       log("TagWriteScreen: Exception while writing: $e");
-//       _showSnackBar("Error writing to tag: $e");
-//     } finally {
-//       setState(() => _isWriting = false);
-//     }
-//   }
-
-//   void _showSnackBar(String message) {
-//     ScaffoldMessenger.of(context)
-//         .showSnackBar(SnackBar(content: Text(message)));
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: commonAppBar(context, 'RFID Writing Screen'),
-//       bottomNavigationBar: bottomNavigationBar(context),
-//       body: Padding(
-//         padding: const EdgeInsets.all(10.0),
-//         child: Column(
-//           children: [
-//             const Text(
-//               'Select Part Number and Enter Serial Number',
-//               style: TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold),
-//               textAlign: TextAlign.center,
-//             ),
-//             DropdownButtonFormField<String>(
-//               value: _selectedPN,
-//               decoration: const InputDecoration(labelText: "Part Number"),
-//               items: const [
-//                 DropdownMenuItem(
-//                   value: "D0002-00-00",
-//                   child: Text("D0002-00-00"),
-//                 ),
-//                 DropdownMenuItem(
-//                   value: "D0002-00-01",
-//                   child: Text("D0002-00-01"),
-//                 ),
-//               ],
-//               onChanged: (String? newValue) {
-//                 if (newValue != null) {
-//                   setState(() => _selectedPN = newValue);
-//                 }
-//               },
-//             ),
-//             TextFormField(
-//               controller: serialNumberController,
-//               decoration: const InputDecoration(
-//                 hintText: 'Serial Number (e.g., SN00001)',
-//               ),
-//             ),
-//             const SizedBox(height: 20),
-//             ElevatedButton(
-//               onPressed: _isWriting ? null : _writeToTag,
-//               child: _isWriting
-//                   ? const SizedBox(
-//                       width: 24,
-//                       height: 24,
-//                       child: CircularProgressIndicator(
-//                         color: Colors.white,
-//                         strokeWidth: 2,
-//                       ),
-//                     )
-//                   : const Text('Write EPC'),
-//             ),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-// }
+// Tag Write Screen - ATA Spec 2000 compliant RFID tag writer
 import 'dart:developer';
 import 'dart:convert';
 
@@ -180,7 +30,7 @@ const List<FilterOption> kAtaFilterOptions = [
   FilterOption(15, 'Oxygen Generators (not cylinders/bottles)'),
   FilterOption(16, 'Engine & Engine Components'),
   FilterOption(17, 'Avionics'),
-  FilterOption(18, 'Experimental (“flight test”) equip.'),
+  FilterOption(18, 'Experimental ("flight test") equip.'),
   FilterOption(19, 'Other Emergency Equipment'),
   FilterOption(20, 'Other Rotables'),
   FilterOption(21, 'Other Repairables'),
@@ -224,13 +74,13 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
   /// A row that keeps two action columns (+ and delete/clear) aligned
   Widget _alignedFieldRow({
     required Widget field,
-    Widget? addAction, // goes in the first action column (+)
-    Widget? removeAction, // goes in the second action column (✖/delete)
+    Widget? addAction,
+    Widget? removeAction,
   }) {
     Widget slot(Widget? child) => SizedBox(
           width: _actionSlotSize,
           height: _actionSlotSize,
-          child: child ?? const SizedBox.shrink(), // placeholder keeps width
+          child: child ?? const SizedBox.shrink(),
         );
 
     return Row(
@@ -248,26 +98,23 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
   int _selectedFilter = 14;
   DateTime? _mfgDate;
   DateTime? _expDate;
-  // SharedPreferences key'leri
+
+  // SharedPreferences keys
   static const _kPnListKey = 'pn_list';
   static const _kMfrListKey = 'manufacturer_list';
   static const _kProdListKey = 'product_name_list';
   static const _kTagTypesKey = 'tag_types';
-
-  // SharedPreferences key
   static const _kDescListKey = 'item_description_list';
 
-// Kalıcı “Item Description” listesi
-  List<String> _descList = ["WATER BOILER"]; // varsayılan örnek
+  // Persistent lists
+  List<String> _descList = ["WATER BOILER"];
   String _selectedDesc = "WATER BOILER";
-
-// Kalıcı listeler (varsayılanlarla başla)
   List<String> _pnList = ["D0002-00-00", "D0002-00-01"];
   List<String> _mfrList = ["TG424"];
   List<String> _prodList = ["WATER BOILER"];
 
   String get manufactureDateFormatted {
-    final date = _mfgDate; // yalnızca seçildiyse
+    final date = _mfgDate;
     if (date == null) return "";
     return "${date.year.toString().padLeft(4, '0')}"
         "${date.month.toString().padLeft(2, '0')}"
@@ -275,7 +122,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
   }
 
   String get expireDateFormatted {
-    final date = _expDate; // yalnızca seçildiyse
+    final date = _expDate;
     if (date == null) return "";
     return "${date.year.toString().padLeft(4, '0')}"
         "${date.month.toString().padLeft(2, '0')}"
@@ -298,93 +145,76 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     const fallback = 'TG424';
     String cleaned = raw.trim().toUpperCase();
     if (cleaned.isEmpty) cleaned = fallback;
-    if (cleaned.length > 6) {
-      cleaned = cleaned.substring(0, 6);
-    }
-    if (cleaned.length < 6) {
-      cleaned = cleaned.padLeft(6, ' ');
-    }
+    if (cleaned.length > 6) cleaned = cleaned.substring(0, 6);
+    if (cleaned.length < 6) cleaned = cleaned.padLeft(6, ' ');
     return cleaned;
   }
 
   TagType? _selectedTagType;
-  final List<TagType> _tagTypes = [
-    TagType(
-      name: 'Default DRT',
-      recordType: 'DRT',
-      epcWords: 12,
-      userWords: 32,
-      permalockWords: 8,
-      defaultFilter: 14,
-    ),
-  ];
+  final List<TagType> _tagTypes = [];
 
   bool _isWriting = false;
   bool _isConnected = false;
 
   Future<void> _loadTagTypes() async {
+    // Always start with built-in presets (cannot be deleted)
+    _tagTypes.clear();
+    _tagTypes.addAll(kBuiltInTagTypes.map((m) => TagType.fromJson(m)));
+
+    // Load user-added tag types
     final sp = await SharedPreferences.getInstance();
     final rawList = sp.getStringList(_kTagTypesKey);
     if (rawList != null && rawList.isNotEmpty) {
-      _tagTypes
-        ..clear()
-        ..addAll(rawList.map((s) => TagType.fromJson(jsonDecode(s))));
-      _selectedTagType ??= _tagTypes.first;
-      _selectedFilter = _selectedTagType!.defaultFilter; // NEW
-      if (mounted) setState(() {});
+      for (final s in rawList) {
+        final tt = TagType.fromJson(jsonDecode(s));
+        // Skip if it's a built-in (already added) - check by name match
+        if (!tt.isBuiltIn) {
+          _tagTypes.add(tt);
+        }
+      }
     }
-    // boşsa en az 1 varsayılan kalsın
-    if (_tagTypes.isEmpty) {
-      _tagTypes.add(TagType(
-        name: 'Default DRT',
-        recordType: 'DRT',
-        epcWords: 12,
-        userWords: 32,
-        permalockWords: 8,
-        defaultFilter: 14,
-      ));
-    }
-    // seçili değer ayarla
+
     _selectedTagType ??= _tagTypes.first;
-    if (mounted) setState(() {});
+    _selectedFilter = _selectedTagType!.defaultFilter;
+    // setState called by parent Future.wait completion
   }
 
   Future<void> _saveTagTypes() async {
     final sp = await SharedPreferences.getInstance();
-    final rawList = _tagTypes.map((t) => jsonEncode(t.toJson())).toList();
+    // Only save user-added tag types (not built-in)
+    final userTypes = _tagTypes.where((t) => !t.isBuiltIn).toList();
+    final rawList = userTypes.map((t) => jsonEncode(t.toJson())).toList();
     await sp.setStringList(_kTagTypesKey, rawList);
   }
 
   @override
   void initState() {
     super.initState();
+    // Run all initializations in parallel for faster startup
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _loadTagTypes();
-      await _loadDropdownData();
-      await _checkIfConnected();
+      await Future.wait([
+        _loadTagTypes(),
+        _loadDropdownData(),
+        _checkIfConnected(),
+      ]);
+      // Single setState after all data is loaded
+      if (mounted) setState(() {});
     });
   }
 
   Future<void> _loadDropdownData() async {
     final sp = await SharedPreferences.getInstance();
-
     _pnList = sp.getStringList(_kPnListKey) ?? _pnList;
     _mfrList = sp.getStringList(_kMfrListKey) ?? _mfrList;
     _prodList = sp.getStringList(_kProdListKey) ?? _prodList;
     _descList = sp.getStringList(_kDescListKey) ?? _descList;
 
-    // seçili değerler listenin içinde mi, değilse ilk elemana düzelt
-    if (!_pnList.contains(_selectedPN)) {
-      _selectedPN = _pnList.first;
-    }
+    if (!_pnList.contains(_selectedPN)) _selectedPN = _pnList.first;
     if (!_mfrList.contains(_selectedManufacturer)) {
       _selectedManufacturer = _mfrList.first;
     }
-    if (!_descList.contains(_selectedDesc)) {
-      _selectedDesc = _descList.first;
-    }
-
-    if (mounted) setState(() {});
+    if (!_descList.contains(_selectedDesc)) _selectedDesc = _descList.first;
+    // setState called by parent Future.wait completion
   }
 
   Future<void> _saveList(String key, List<String> list) async {
@@ -392,7 +222,6 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     await sp.setStringList(key, list);
   }
 
-// Ekle diyalogu
   Future<void> _addItemDialog({
     required String title,
     required String key,
@@ -402,20 +231,27 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     final ctrl = TextEditingController();
     final result = await showDialog<String>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: Text(title),
         content: TextField(
           controller: ctrl,
           textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(hintText: 'Enter value'),
+          cursorColor: _brandNavy,
+          decoration: InputDecoration(
+            hintText: 'Enter value',
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: _brandNavy),
+            ),
+          ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(ctx),
+              style: TextButton.styleFrom(foregroundColor: _brandNavy),
               child: const Text('Cancel')),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(context, ctrl.text.trim().toUpperCase()),
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim().toUpperCase()),
+            style: FilledButton.styleFrom(backgroundColor: _brandNavy),
             child: const Text('Add'),
           ),
         ],
@@ -437,7 +273,6 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     await _saveList(key, target);
   }
 
-// Sil diyalogu
   Future<void> _removeSelectedDialog({
     required String title,
     required String key,
@@ -455,15 +290,17 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: Text('Remove $title'),
         content: Text('Delete "$selected"?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(ctx, false),
+              style: TextButton.styleFrom(foregroundColor: _brandNavy),
               child: const Text('Cancel')),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: _brandNavy),
               child: const Text('Delete')),
         ],
       ),
@@ -478,20 +315,10 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
   }
 
   Future<void> _checkIfConnected() async {
-    log("TagWriteScreen: Checking if RFID is already connected...");
-    final bool? alreadyConnected = await RfidC72Plugin.isConnected;
-    if (alreadyConnected == true) {
-      log("TagWriteScreen: Device is already connected!");
-      setState(() => _isConnected = true);
-    } else {
-      log("TagWriteScreen: Not connected; attempting to connect...");
-      final bool? connectResult = await RfidC72Plugin.connect;
-      if (connectResult == true) {
-        log("TagWriteScreen: Connected successfully!");
-        setState(() => _isConnected = true);
-      } else {
-        log("TagWriteScreen: Failed to connect.");
-      }
+    // Use ensureUhfConnected - it's already optimized with caching
+    final ok = await RfidC72Plugin.ensureUhfConnected();
+    if (mounted) {
+      setState(() => _isConnected = ok);
     }
   }
 
@@ -504,52 +331,63 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     final String partNumber = _selectedPN.trim().toUpperCase();
     final String serialNumber =
         serialNumberController.text.trim().toUpperCase();
-    // final String manufacturer =
-    //     manufacturerController.text.trim().toUpperCase();
-    // final String productName = productNameController.text.trim().toUpperCase();
-    // final String manufactureDate =
-    //     manufactureDateController.text.trim().toUpperCase();
 
     if (partNumber.isEmpty || serialNumber.isEmpty) {
       _showSnackBar("Please enter both Part Number and Serial Number.");
       return;
     }
+    // ATA Spec 2000 TEI field length validation (Table 3, 5, 8)
     if (partNumber.length > 32) {
-      _showSnackBar("Part Number is too long (max 32 chars).");
+      _showSnackBar(
+          "Part Number (PNR) is too long (max 32 chars per ATA Spec).");
       return;
     }
     if (serialNumber.length > 30) {
-      _showSnackBar("Serial Number is too long (max 30 chars).");
+      _showSnackBar(
+          "Serial Number (SER) is too long (max 30 chars per ATA Spec).");
+      return;
+    }
+    if (_selectedManufacturer.trim().length != 5) {
+      _showSnackBar(
+          "CAGE Code (MFR) must be exactly 5 characters per ATA Spec.");
+      return;
+    }
+    if (_selectedDesc.length > 32) {
+      _showSnackBar(
+          "Part Description (PDT) is too long (max 32 chars per ATA Spec).");
+      return;
+    }
+    // Validate date format (YYYYMMDD = 8 chars)
+    if (manufactureDateFormatted.isNotEmpty &&
+        manufactureDateFormatted.length != 8) {
+      _showSnackBar("Manufacture Date (DMF) must be YYYYMMDD format.");
+      return;
+    }
+    if (expireDateFormatted.isNotEmpty && expireDateFormatted.length != 8) {
+      _showSnackBar("Expiration Date (EXP) must be YYYYMMDD format.");
       return;
     }
 
     try {
       setState(() => _isWriting = true);
 
-      // Write to EPC first
-      // final bool? epcSuccess = await RfidC72Plugin.writeTagADIConstruct2(
-      //   partNumber,
-      //   serialNumber,
-      // );
-
       final t = _selectedTagType ??
           TagType(
             name: 'Default DRT',
             recordType: 'DRT',
             epcWords: 12,
-            userWords: 32,
+            userWords: 128, // ATA Spec: DRT minimum 2k bits = 128 words
             permalockWords: 8,
             defaultFilter: 14,
           );
 
       final configured = await RfidC72Plugin.configureChipAta(
-        recordType: t.recordType, // 'DRT', 'SRT-B', 'SRT-U', 'MRT'...
+        recordType: t.recordType,
         epcWords: t.epcWords,
         userWords: t.userWords,
         permalockWords: t.permalockWords,
-        enablePermalock: false, // istersen yazımdan sonra true yaparsın
-        lockEpc:
-            false, // EPC/USER kilitlemeyi yazım başarı sonrası yapman daha güvenli
+        enablePermalock: false,
+        lockEpc: false,
         lockUser: false,
         accessPwd: '00000000',
       );
@@ -568,13 +406,10 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
           ) ??
           false;
 
-      // Then write to User Memory
-
       final bool? userMemSuccess =
           await RfidC72Plugin.writeAtaUserMemoryWithPayload(
         _selectedManufacturer,
-        _selectedDesc, // productName (Item Description)  ✅
-
+        _selectedDesc,
         _selectedPN,
         serialNumber,
         manufactureDateFormatted,
@@ -606,55 +441,77 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false, // geri eylemini biz yöneteceğiz
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return; // Navigator zaten pop ettiyse dokunma
+        if (didPop) return;
         Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
       },
       child: Scaffold(
         appBar: commonAppBar(context, 'TAG WRITER', showBack: true),
-        // bottomNavigationBar: bottomNavigationBar(context),
         body: Padding(
           padding: const EdgeInsets.all(10.0),
           child: Theme(
             data: Theme.of(context).copyWith(
-              inputDecorationTheme: const InputDecorationTheme(
+              // Brand color scheme
+              colorScheme: Theme.of(context).colorScheme.copyWith(
+                    primary: _brandNavy,
+                    secondary: _brandNavy,
+                  ),
+              // Dropdown menu theme
+              dropdownMenuTheme: DropdownMenuThemeData(
+                menuStyle: MenuStyle(
+                  backgroundColor: WidgetStateProperty.all(Colors.white),
+                ),
+              ),
+              // Dialog theme
+              dialogTheme: DialogTheme(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              // FilledButton theme (Delete button in dialogs)
+              filledButtonTheme: FilledButtonThemeData(
+                style: FilledButton.styleFrom(
+                  backgroundColor: _brandNavy,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              // TextButton theme (Cancel button in dialogs)
+              textButtonTheme: TextButtonThemeData(
+                style: TextButton.styleFrom(
+                  foregroundColor: _brandNavy,
+                ),
+              ),
+              inputDecorationTheme: InputDecorationTheme(
                 labelStyle:
-                    TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                floatingLabelStyle:
-                    TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                contentPadding: EdgeInsets.symmetric(vertical: 8),
+                    const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                floatingLabelStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: _brandNavy),
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                focusedBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: _brandNavy, width: 2),
+                ),
               ),
             ),
             child: ListView(
               children: [
-                // Top action removed; moved near bottom next to Write To Tag
-                // const Text(
-                //   'Select Part Number and Enter Serial Number',
-                //   style: TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold),
-                //   textAlign: TextAlign.center,
-                // ),
-                // DropdownButtonFormField<TagType>(
-                //   value: _selectedTagType ??
-                //       (_tagTypes.isNotEmpty ? _tagTypes.first : null),
-                //   decoration: const InputDecoration(labelText: 'Tag Type'),
-                //   items: _tagTypes
-                //       .map((t) =>
-                //           DropdownMenuItem(value: t, child: Text(t.toString())))
-                //       .toList(),
-                //   onChanged: (v) => setState(() => _selectedTagType = v),
-                // ),
-                // const SizedBox(height: 12),
                 _alignedFieldRow(
                   field: DropdownButtonFormField<TagType>(
                     value: _selectedTagType ??
                         (_tagTypes.isNotEmpty ? _tagTypes.first : null),
                     decoration: const InputDecoration(labelText: 'Tag Type'),
                     isDense: true,
+                    isExpanded: true,
                     menuMaxHeight: _menuMaxHeight,
                     items: _tagTypes
                         .map((t) => DropdownMenuItem(
-                            value: t, child: Text(t.toString())))
+                            value: t,
+                            child: Text(
+                              t.isBuiltIn ? '🔒 ${t.toString()}' : t.toString(),
+                              overflow: TextOverflow.ellipsis,
+                            )))
                         .toList(),
                     onChanged: (v) => setState(() {
                       _selectedTagType = v;
@@ -682,65 +539,70 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                     },
                   ),
                   removeAction: IconButton(
-                    tooltip: 'Remove Tag Type',
-                    icon: const Icon(Icons.delete_outline),
+                    tooltip: _selectedTagType?.isBuiltIn == true
+                        ? 'Built-in preset (cannot delete)'
+                        : 'Remove Tag Type',
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: _selectedTagType?.isBuiltIn == true
+                          ? Colors.grey.shade400
+                          : null,
+                    ),
                     constraints: _iconButtonConstraints,
                     padding: _iconButtonPadding,
-                    onPressed: () async {
-                      if (_tagTypes.length <= 1) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content:
-                                  Text('At least one Tag Type must remain')),
-                        );
-                        return;
-                      }
-                      final ok = await showDialog<bool>(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: const Text('Remove Tag Type'),
-                          content: Text('Delete "${_selectedTagType?.name}"?'),
-                          actions: [
-                            TextButton(
-                                onPressed: () => Navigator.pop(context, false),
-                                child: const Text('Cancel')),
-                            FilledButton(
-                                onPressed: () => Navigator.pop(context, true),
-                                child: const Text('Delete')),
-                          ],
-                        ),
-                      );
-                      if (ok == true) {
-                        setState(() {
-                          _tagTypes.remove(_selectedTagType);
-                          _selectedTagType = _tagTypes.first;
-                        });
-                        await _saveTagTypes();
-                      }
-                    },
+                    onPressed: _selectedTagType?.isBuiltIn == true
+                        ? () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content:
+                                    Text('Built-in presets cannot be deleted'),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                          }
+                        : () async {
+                            // Count non-built-in types
+                            final userTypes =
+                                _tagTypes.where((t) => !t.isBuiltIn).length;
+                            if (userTypes <= 0) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text('No custom types to delete')),
+                              );
+                              return;
+                            }
+                            final ok = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Remove Tag Type'),
+                                content:
+                                    Text('Delete "${_selectedTagType?.name}"?'),
+                                actions: [
+                                  TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
+                                      style: TextButton.styleFrom(
+                                          foregroundColor: _brandNavy),
+                                      child: const Text('Cancel')),
+                                  FilledButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      style: FilledButton.styleFrom(
+                                          backgroundColor: _brandNavy),
+                                      child: const Text('Delete')),
+                                ],
+                              ),
+                            );
+                            if (ok == true) {
+                              setState(() {
+                                _tagTypes.remove(_selectedTagType);
+                                _selectedTagType = _tagTypes.first;
+                              });
+                              await _saveTagTypes();
+                            }
+                          },
                   ),
                 ),
                 const SizedBox(height: 12),
-
-                // DropdownButtonFormField<String>(
-                //   value: _selectedPN,
-                //   decoration: const InputDecoration(labelText: "Part Number"),
-                //   items: const [
-                //     DropdownMenuItem(
-                //       value: "D0002-00-00",
-                //       child: Text("D0002-00-00"),
-                //     ),
-                //     DropdownMenuItem(
-                //       value: "D0002-00-01",
-                //       child: Text("D0002-00-01"),
-                //     ),
-                //   ],
-                //   onChanged: (String? newValue) {
-                //     if (newValue != null) {
-                //       setState(() => _selectedPN = newValue);
-                //     }
-                //   },
-                // ),
                 _alignedFieldRow(
                   field: DropdownButtonFormField<String>(
                     value: _selectedPN,
@@ -778,31 +640,14 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                     ),
                   ),
                 ),
-
                 _alignedFieldRow(
                   field: TextFormField(
                     controller: serialNumberController,
                     decoration: const InputDecoration(
-                      // hintText: 'Serial Number (e.g., SN00001)',
                       labelText: 'Serial Number',
                     ),
                   ),
                 ),
-                // DropdownButtonFormField<String>(
-                //   value: _selectedManufacturer,
-                //   decoration: const InputDecoration(labelText: "Manufacturer"),
-                //   items: const [
-                //     DropdownMenuItem(
-                //       value: "TG424",
-                //       child: Text("Turkish Technic Inc."),
-                //     ),
-                //   ],
-                //   onChanged: (String? newValue) {
-                //     if (newValue != null) {
-                //       setState(() => _selectedManufacturer = newValue);
-                //     }
-                //   },
-                // ),
                 _alignedFieldRow(
                   field: DropdownButtonFormField<String>(
                     value: _selectedManufacturer,
@@ -843,7 +688,6 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                // --- Item Description (User Memory) ---
                 _alignedFieldRow(
                   field: DropdownButtonFormField<String>(
                     value: _selectedDesc,
@@ -883,59 +727,6 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-
-                // DropdownButtonFormField<String>(
-                //   value: _selectedProductName,
-                //   decoration: const InputDecoration(labelText: "Product Name"),
-                //   items: const [
-                //     DropdownMenuItem(
-                //       value: "WATER BOILER",
-                //       child: Text("WATER BOILER"),
-                //     ),
-                //   ],
-                //   onChanged: (String? newValue) {
-                //     if (newValue != null) {
-                //       setState(() => _selectedProductName = newValue);
-                //     }
-                //   },
-                // ),
-                // Row(
-                //   children: [
-                //     Expanded(
-                //       child: DropdownButtonFormField<String>(
-                //         value: _selectedProductName,
-                //         decoration:
-                //             const InputDecoration(labelText: "Product Name"),
-                //         items: _prodList
-                //             .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                //             .toList(),
-                //         onChanged: (v) => setState(() => _selectedProductName = v!),
-                //       ),
-                //     ),
-                //     const SizedBox(width: 8),
-                //     IconButton(
-                //       tooltip: 'Add Product',
-                //       icon: const Icon(Icons.add),
-                //       onPressed: () => _addItemDialog(
-                //         title: 'Add Product Name',
-                //         key: _kProdListKey,
-                //         target: _prodList,
-                //         onSelected: (nv) => _selectedProductName = nv,
-                //       ),
-                //     ),
-                //     IconButton(
-                //       tooltip: 'Remove Product',
-                //       icon: const Icon(Icons.delete_outline),
-                //       onPressed: () => _removeSelectedDialog(
-                //         title: 'Product Name',
-                //         key: _kProdListKey,
-                //         target: _prodList,
-                //         selected: _selectedProductName,
-                //         onSelected: (nv) => _selectedProductName = nv,
-                //       ),
-                //     ),
-                //   ],
-                // ),
                 _alignedFieldRow(
                   field: DropdownButtonFormField<int>(
                     value: _selectedFilter,
@@ -944,7 +735,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                     isDense: true,
                     isExpanded: true,
                     alignment: AlignmentDirectional.centerStart,
-                    menuMaxHeight: _menuMaxHeight, // ~5 satır
+                    menuMaxHeight: _menuMaxHeight,
                     items: kAtaFilterOptions
                         .map((o) => DropdownMenuItem(
                               value: o.value,
@@ -972,8 +763,6 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-
-                // Manufacture Date (optional)
                 _alignedFieldRow(
                   field: GestureDetector(
                     onTap: () async {
@@ -996,11 +785,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                           );
                         },
                       );
-                      if (picked != null) {
-                        setState(() {
-                          _mfgDate = picked;
-                        });
-                      }
+                      if (picked != null) setState(() => _mfgDate = picked);
                     },
                     child: AbsorbPointer(
                       child: TextFormField(
@@ -1025,8 +810,6 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                   removeAction: null,
                 ),
                 const SizedBox(height: 12),
-
-                // Expire Date (optional)
                 _alignedFieldRow(
                   field: GestureDetector(
                     onTap: () async {
@@ -1049,11 +832,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                           );
                         },
                       );
-                      if (picked != null) {
-                        setState(() {
-                          _expDate = picked;
-                        });
-                      }
+                      if (picked != null) setState(() => _expDate = picked);
                     },
                     child: AbsorbPointer(
                       child: TextFormField(

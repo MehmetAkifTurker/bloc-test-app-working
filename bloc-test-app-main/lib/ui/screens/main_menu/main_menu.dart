@@ -28,7 +28,7 @@
 //         // );
 //       },
 //       child: Scaffold(
-//         appBar: commonAppBar(context, 'Main Menu', showBack: false),
+//         appBar: commonAppBar(context, 'Tool & Test Systems', showBack: false),
 //         body: Column(
 //           children: [
 //             Expanded(
@@ -152,7 +152,7 @@ class _MainMenuState extends State<MainMenu> {
       canPop: false, // main menüde geri ile uygulama kapanmasın
       onPopInvokedWithResult: (_, __) {},
       child: Scaffold(
-        appBar: commonAppBar(context, 'Main Menu', showBack: false),
+        appBar: commonAppBar(context, 'Tool & Test Systems', showBack: false),
         backgroundColor: bg,
         body: SafeArea(
           child: Center(
@@ -164,13 +164,13 @@ class _MainMenuState extends State<MainMenu> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      'Tool & Test Systems RFID\nSoftware',
+                      'RFID Manager',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 28,
+                        fontSize: 32,
                         height: 1.25,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: .2,
+                        letterSpacing: .5,
                         color: _thyNavy,
                       ),
                     ),
@@ -189,11 +189,11 @@ class _MainMenuState extends State<MainMenu> {
                     ),
                     const SizedBox(height: 36),
 
-                    // TAG READER
+                    // TAG READER (UHF RFID)
                     _BrandActionCard(
-                      icon: Icons.qr_code_scanner,
+                      icon: Icons.contactless,
                       title: 'TAG READER',
-                      subtitle: 'Scan and read RFID tags',
+                      subtitle: 'Scan and read UHF RFID tags',
                       accent: _thyNavy,
                       onTap: () => _go('/read'),
                     ),
@@ -244,6 +244,7 @@ class _BrandActionCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const _BrandActionCard({
+    // ignore: unused_element
     super.key,
     required this.icon,
     required this.title,

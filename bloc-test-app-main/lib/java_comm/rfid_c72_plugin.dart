@@ -356,6 +356,48 @@ class RfidC72Plugin {
       'accessPwd': accessPwd,
     });
   }
+  
+  /// Lock USER memory (reversible with password or permanent)
+  /// WARNING: permanent=true is IRREVERSIBLE!
+  static Future<bool?> lockUserMemory({
+    String accessPwd = '00000000',
+    bool permanent = false,
+  }) {
+    return _channel.invokeMethod<bool>('lockUserMemory', {
+      'accessPwd': accessPwd,
+      'permanent': permanent,
+    });
+  }
+  
+  /// Lock EPC memory
+  static Future<bool?> lockEpcMemory({
+    String accessPwd = '00000000',
+    bool permanent = false,
+  }) {
+    return _channel.invokeMethod<bool>('lockEpcMemory', {
+      'accessPwd': accessPwd,
+      'permanent': permanent,
+    });
+  }
+  
+  /// Permalock Birth Record in USER memory (ATA Spec 2000 compliance)
+  /// WARNING: This is PERMANENT and IRREVERSIBLE!
+  /// Used to permanently lock ToC Header + Record Descriptors + Birth Record
+  /// while keeping Lifecycle Record writable.
+  /// 
+  /// @param startWord Start address in USER memory (default 0 for ToC)
+  /// @param wordCount Number of words to lock (should cover ToC + RDs + Birth)
+  static Future<bool?> permalockBirthRecord({
+    String accessPwd = '00000000',
+    int startWord = 0,
+    int wordCount = 12, // Default: ToC (4) + RDs (4) + minimum Birth header
+  }) {
+    return _channel.invokeMethod<bool>('permalockBirthRecord', {
+      'accessPwd': accessPwd,
+      'startWord': startWord,
+      'wordCount': wordCount,
+    });
+  }
 
   static Future<String?> readUserMemory() async {
     // (You might not need epcHex, but keep it for now for future filtering)
@@ -449,6 +491,7 @@ class RfidC72Plugin {
   }
 
   static Future<void> _stopBarcodeLoop() async {
+    if (!_holdScan && !_loopRunning) return; // Already stopped
     _log('stopBarcodeLoop() called');
     _holdScan = false;
     await RfidC72Plugin.stopScan;
@@ -456,9 +499,14 @@ class RfidC72Plugin {
 
 // Ekrandan çıkarken çağırmak için
   static Future<void> disposeBarcode() async {
+    // Skip if already disposed
+    if (!_barcodeConnected && !_loopRunning && !_holdScan) return;
+    
     await _stopBarcodeLoop();
-    await closeScan;
-    _barcodeConnected = false;
+    if (_barcodeConnected) {
+      await closeScan;
+      _barcodeConnected = false;
+    }
   }
 
   static Future<void> _handleKeyEventNoCtx(MethodCall call) async {
@@ -509,11 +557,13 @@ class RfidC72Plugin {
 
   static Future<void> setTriggerMode(ScanTriggerMode mode) async {
     if (_triggerMode == mode) return;
+    
     if (mode == ScanTriggerMode.rfid) {
-      await _stopBarcodeLoop();
-    } else {
-      _holdScan = false;
+      // RFID modunda barkod okuyucuyu tamamen kapat
+      await disposeBarcode();
     }
+    // Barcode moduna geçerken hemen açma - tetik basılınca açılacak
+    _holdScan = false;
     _triggerMode = mode;
     _physicalTriggerHeld = false;
     _log('Trigger mode set to $_triggerMode');
