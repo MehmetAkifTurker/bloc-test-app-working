@@ -397,11 +397,16 @@ public class LocationManager {
                 Thread.sleep(100);
             }
 
-            // Set power to maximum for better location range
+            // Set power to maximum for better location range.
+            // Capture the ORIGINAL power only once (originalPower == -1); a re-entry
+            // while already at LOCATION_POWER must not overwrite the real value, or
+            // stopLocation would "restore" to 30 dBm and lose the user's setting.
             try {
-                originalPower = reader.getPower();
-                Log.d(TAG, "📡 Original power: " + originalPower + " dBm");
-                if (originalPower != LOCATION_POWER) {
+                if (originalPower == -1) {
+                    originalPower = reader.getPower();
+                    Log.d(TAG, "📡 Original power: " + originalPower + " dBm");
+                }
+                if (reader.getPower() != LOCATION_POWER) {
                     boolean powerSet = reader.setPower(LOCATION_POWER);
                     Log.i(TAG, "📡 Set power to " + LOCATION_POWER + " dBm for location: " + (powerSet ? "SUCCESS" : "FAILED"));
                 }
@@ -483,6 +488,17 @@ public class LocationManager {
             return true;
         } catch (Exception e) {
             Log.e(TAG, "Error starting location: " + e.getMessage(), e);
+            // Start failed: stopLocation won't be called by the UI, so restore the
+            // power here, otherwise the reader stays stuck at LOCATION_POWER (30 dBm)
+            // and subsequent scanning runs at the wrong power.
+            try {
+                if (originalPower > 0) {
+                    reader.setPower(originalPower);
+                    Log.d(TAG, "📡 Restored power to " + originalPower + " dBm after failed start");
+                    originalPower = -1;
+                }
+            } catch (Exception ignored) {}
+            isLocating = false;
             return false;
         }
     }
