@@ -15,11 +15,8 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Objects;
 
 import SDKMethods.core.EPC;
-import SDKMethods.core.TagKey;
-import SDKMethods.core.UHFListener;
 import SDKMethods.core.UHFManager;
 
 /**
@@ -49,14 +46,10 @@ public class InventoryManager {
         handler = new Handler() {
             @Override
             public void handleMessage(Message msg) {
-                String result = (String) msg.obj;
-                String[] strs = result.split("@");
-                if (strs.length == 2) {
-                    String cleanEpc = strs[0].replace("EPC:", "").trim();
-                    int idx = cleanEpc.indexOf('\n');
-                    if (idx >= 0) cleanEpc = cleanEpc.substring(idx + 1).trim();
-                    addEPCToList(cleanEpc, strs[1]);
-                    Log.d(TAG, "✅ Tag added: " + cleanEpc);
+                // Runs on the main thread; safe to mutate tagList here.
+                if (msg.obj instanceof UHFTAGInfo) {
+                    UHFTAGInfo info = (UHFTAGInfo) msg.obj;
+                    addEPCToList(info.getEPC(), info.getTid(), info.getUser(), info.getRssi());
                 }
             }
         };
@@ -86,7 +79,7 @@ public class InventoryManager {
             if (isSingleRead) {
                 UHFTAGInfo info = reader.inventorySingleTag();
                 if (info != null) {
-                    addEPCToList(info.getEPC(), info.getRssi());
+                    addEPCToList(info.getEPC(), info.getTid(), info.getUser(), info.getRssi());
                     return true;
                 }
                 return false;
@@ -289,29 +282,45 @@ public class InventoryManager {
 
     // ==================== TAG LIST MANAGEMENT ====================
 
-    private void addEPCToList(String epc, String rssi) {
-        if (!TextUtils.isEmpty(epc)) {
-            EPC tag = new EPC();
-            tag.setId("");
-            tag.setEpc(epc);
-            tag.setCount("1");
-            tag.setRssi(rssi);
-            
-            if (tagList.containsKey(epc)) {
-                int oldCount = Integer.parseInt(Objects.requireNonNull(tagList.get(epc)).getCount());
-                tag.setCount(String.valueOf(oldCount + 1));
-            }
-            tagList.put(epc, tag);
-            
-            notifyTagsChanged();
-        }
-    }
+    private void addEPCToList(String epc, String tid, String user, String rssi) {
+        if (TextUtils.isEmpty(epc)) return;
 
-    private void notifyTagsChanged() {
-        UHFListener listener = UHFManager.getInstance().getUhfListener();
-        if (listener != null) {
-            listener.onRead(getCurrentTagsJson());
+        // Validate USER: the SDK occasionally returns the TID bytes in the USER field.
+        // Valid ATA USER memory starts with DSFID 0x1E00; TIDs usually start E0/E2.
+        if (user != null && user.length() >= 4) {
+            String prefix = user.substring(0, 4).toUpperCase();
+            boolean looksLikeTid = prefix.startsWith("E2") || prefix.startsWith("E0")
+                    || (tid != null && tid.length() >= 4 && prefix.equalsIgnoreCase(tid.substring(0, 4)));
+            if (looksLikeTid && !prefix.equals("1E00")) {
+                user = ""; // drop bogus USER
+            }
         }
+        if (user == null) user = "";
+
+        EPC existing = tagList.get(epc);
+        EPC tag = existing != null ? existing : new EPC();
+        tag.setId("");
+        tag.setEpc(epc);
+        tag.setRssi(rssi);
+
+        // Keep the richest data seen across inventory cycles (a re-read may be empty).
+        String bestTid = tag.getTid();
+        if (isTidValid(tid)) bestTid = tid;          // a fresh valid TID always wins
+        else if (bestTid == null) bestTid = tid;      // otherwise fill if we had none
+        tag.setTid(bestTid);
+        tag.setValidTid(isTidValid(bestTid));
+
+        if (!user.isEmpty()) tag.setUser(user);       // else keep previously captured USER
+
+        int oldCount = 0;
+        if (existing != null && existing.getCount() != null) {
+            try { oldCount = Integer.parseInt(existing.getCount()); } catch (Exception ignore) {}
+        }
+        tag.setCount(String.valueOf(oldCount + 1));
+
+        tagList.put(epc, tag);
+        // NOTE: no per-tag push here — Flutter polls getCurrentTags() at UI rate,
+        // decoupling the fast hardware buffer drain from UI updates (dense fields).
     }
 
     public String getCurrentTagsJson() {
@@ -320,10 +329,13 @@ public class InventoryManager {
             if (tagList != null) {
                 for (EPC t : tagList.values()) {
                     JSONObject j = new JSONObject();
-                    j.put(TagKey.ID, t.getId());
-                    j.put(TagKey.EPC, t.getEpc());
-                    j.put(TagKey.RSSI, t.getRssi());
-                    j.put(TagKey.COUNT, t.getCount());
+                    // Same keys as readSingleTagMeta() so Flutter handles both uniformly.
+                    j.put("epc", t.getEpc() != null ? t.getEpc() : "");
+                    j.put("tid", t.getTid() != null ? t.getTid() : "");
+                    j.put("rssi", t.getRssi() != null ? t.getRssi() : "");
+                    j.put("validTid", t.isValidTid());
+                    j.put("userMemory", t.getUser() != null ? t.getUser() : "");
+                    j.put("count", t.getCount() != null ? t.getCount() : "1");
                     arr.put(j);
                 }
             }
@@ -368,12 +380,14 @@ public class InventoryManager {
             RFIDWithUHFUART reader = UHFManager.getInstance().getReader();
             while (isStart && reader != null) {
                 UHFTAGInfo info = reader.readTagFromBuffer();
-                if (info != null) {
-                    String epcHex = info.getEPC();
-                    String rssiStr = info.getRssi();
+                if (info != null && info.getEPC() != null) {
+                    // Pass the full tag (EPC + TID + USER + RSSI) to the main thread.
                     Message msg = handler.obtainMessage();
-                    msg.obj = epcHex + "@" + rssiStr;
+                    msg.obj = info;
                     handler.sendMessage(msg);
+                } else {
+                    // Buffer empty: brief pause to avoid busy-spinning the CPU.
+                    try { Thread.sleep(5); } catch (InterruptedException e) { break; }
                 }
             }
         }

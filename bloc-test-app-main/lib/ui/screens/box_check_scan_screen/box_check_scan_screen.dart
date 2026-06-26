@@ -1,6 +1,5 @@
 // Box Check Scan Screen - RFID Tag Reader
 import 'dart:async';
-import 'dart:convert';
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
@@ -153,22 +152,11 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     }).toList();
   }
 
-  Future<void> _readTag() async {
+  // Processes one tag from the continuous-inventory snapshot (getCurrentTags).
+  // USER memory here comes from the inventory buffer (combined mode); the full
+  // read for Lifecycle data happens on demand in the detail screen.
+  Future<void> _processTag(Map<String, dynamic> tagInfo) async {
     try {
-      String? tagInfoJson = await RfidC72Plugin.readSingleTagMeta();
-      if (tagInfoJson == null || tagInfoJson.isEmpty) {
-        tagInfoJson = await RfidC72Plugin.readSingleTagWithTid();
-      }
-      if (tagInfoJson == null || tagInfoJson.isEmpty) return;
-
-      // Parse the JSON response containing EPC, TID, and RSSI
-      late Map<String, dynamic> tagInfo;
-      try {
-        tagInfo = jsonDecode(tagInfoJson);
-      } catch (e) {
-        log("❌ TID-SCAN: Failed to parse tag info JSON: $e");
-        return;
-      }
 
       final String epcHex = (tagInfo['epc'] ?? '')
           .toString()
@@ -234,40 +222,13 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
 
       final decoded = decodeEpc(epcHex);
 
-      // Use USER from inventory if SDK provided it
-      String? userHex;
-      if (hasDirectUser) {
-        userHex = directUserMemory;
-
-        // SDK inventory returns ~61 words. For Lifecycle records (at word 74+),
-        // we need full read. Dynamic read will determine actual size from ToC.
-        // Only skip if we already have substantial data (more than inventory provides)
-        final bool needsFullRead =
-            userHex.length < 300; // ~75 words - more than inventory
-        final bool existingNeedsFullRead =
-            existingItem != null && (existingItem.userHex?.length ?? 0) < 300;
-
-        if (needsFullRead || existingNeedsFullRead) {
-          try {
-            // Use EPC filter (unique per tag) instead of TID (may be duplicate)
-            final fullHex =
-                await RfidC72Plugin.readUserMemoryForEpcFull(epcHex);
-            if (fullHex != null && fullHex.length > userHex.length) {
-              userHex = fullHex;
-            } else if (validTid && tid.isNotEmpty && tid.length >= 8) {
-              // Fallback to TID if EPC filter fails
-              final tidHex = await RfidC72Plugin.readUserMemoryForTid(tid);
-              if (tidHex != null && tidHex.length > userHex.length) {
-                userHex = tidHex;
-              }
-            }
-          } catch (_) {
-            // Keep inventory data if full read fails
-          }
-        }
-      } else {
-        userHex = existingItem?.userHex;
-      }
+      // USER from the inventory buffer (combined mode, ~61 words) is enough to
+      // decode the Birth Record for the list. The full read (Lifecycle at word 74+)
+      // is deferred to the detail screen, which reads it on open while scanning is
+      // paused — doing it here would stall continuous inventory in dense fields.
+      // Prefer fresh buffer USER; otherwise keep what we already had.
+      final String? userHex =
+          hasDirectUser ? directUserMemory : existingItem?.userHex;
 
       int? ataClass = existingItem?.ataClass;
       if (userHex != null && userHex.length >= 16) {
@@ -362,12 +323,16 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
 
   void _toggleScan() {
     if (!_isScanning) {
-      _scanTimer = Timer.periodic(const Duration(milliseconds: 400), (_) async {
+      // Start fast continuous inventory on the reader (hardware anti-collision
+      // streams all tags into a buffer). The native TagThread drains the buffer
+      // (EPC + TID + USER in combined mode); we just poll the accumulated snapshot
+      // at UI rate, decoupling read speed from UI rate for dense environments.
+      RfidC72Plugin.startContinuous;
+      _scanTimer = Timer.periodic(const Duration(milliseconds: 250), (_) async {
         if (_scanTickBusy) return;
         _scanTickBusy = true;
         try {
-          await _readTag();
-          // SDK reads EPC+TID+USER in single operation - very fast!
+          await _refreshTags();
         } finally {
           _scanTickBusy = false;
         }
@@ -376,11 +341,31 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     } else {
       _scanTimer?.cancel();
       _scanTimer = null;
+      RfidC72Plugin.stop;
       setState(() => _isScanning = false);
     }
   }
 
-  void _clearList() {
+  // Pull the current accumulated-tag snapshot from the native buffer and process
+  // each entry. Cheap thanks to the per-tag dedup inside _processTag.
+  Future<void> _refreshTags() async {
+    final List<Map<String, dynamic>> tags;
+    try {
+      tags = await RfidC72Plugin.getCurrentTags();
+    } catch (_) {
+      return;
+    }
+    for (final t in tags) {
+      await _processTag(t);
+    }
+  }
+
+  Future<void> _clearList() async {
+    // Also clear the native accumulator, otherwise the next poll re-adds them.
+    try {
+      await RfidC72Plugin.clearData;
+    } catch (_) {}
+    if (!mounted) return;
     setState(() {
       _tagItems.clear();
       _tagIndexById.clear();
@@ -809,6 +794,10 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   @override
   void dispose() {
     _scanTimer?.cancel();
+    if (_isScanning) {
+      // ignore: discarded_futures
+      RfidC72Plugin.stop; // stop native continuous inventory on leave
+    }
     RfidC72Plugin.clearRfidTriggerHandlers();
     // ignore: discarded_futures
     RfidC72Plugin.setTriggerMode(ScanTriggerMode.barcode);
