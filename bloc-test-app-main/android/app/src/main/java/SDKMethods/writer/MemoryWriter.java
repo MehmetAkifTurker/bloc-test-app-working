@@ -23,7 +23,13 @@ public class MemoryWriter {
     private int currentEpcWords = 12;
     private int currentUserWords = 32;
     private int currentPermalockWords = 0;
-    private int currentAtaClass = 1; // ATA Class (0-63) - should match EPC Filter Value
+    // ATA Spec A-4-2: USER ToC "ATA Classification" field shall be 0x01 (flyable parts).
+    // NOTE: this is NOT the EPC Filter Value (that lives in the EPC bank, separately).
+    private static final int ATA_CLASSIFICATION = 0x01;
+    // UID Construct used when programming the EPC (1 = SER only, 2 = PartNumber + SER).
+    // Set by programConstruct1Epc / programConstruct2Epc; written into the Birth Record UIC field
+    // so the USER memory always reflects how the EPC was actually built.
+    private int currentUidConstruct = 2;
 
     // Calculated permalock size from last write operation
     // This is the RECOMMENDED permalock size based on actual data written
@@ -434,8 +440,9 @@ public class MemoryWriter {
             String headerBits = "00111011"; // 0x3B - ATA Spec header
             int fv = (filterValue < 0 || filterValue > 63) ? 0 : filterValue;
 
-            // Store filter value as ATA Class for USER memory consistency
-            currentAtaClass = fv;
+            // Filter Value is encoded into the EPC only (filterBits below).
+            // ATA Classification in the USER ToC is a separate field (always 0x01 per spec).
+            currentUidConstruct = 1; // Construct 1: SER only (no Part Number in EPC)
             String filterBits = String.format("%6s", Integer.toBinaryString(fv)).replace(' ', '0');
 
             StringBuilder epcBits = new StringBuilder();
@@ -615,8 +622,9 @@ public class MemoryWriter {
             String headerBits = "00111011";
             int fv = (filterValue < 0 || filterValue > 63) ? 0 : filterValue;
 
-            // Store filter value as ATA Class for USER memory consistency
-            currentAtaClass = fv;
+            // Filter Value is encoded into the EPC only (filterBits below).
+            // ATA Classification in the USER ToC is a separate field (always 0x01 per spec).
+            currentUidConstruct = 2; // Construct 2: Part Number + SER in EPC
             String filterBits = String.format("%6s", Integer.toBinaryString(fv)).replace(' ', '0');
 
             StringBuilder epcBits = new StringBuilder();
@@ -693,7 +701,7 @@ public class MemoryWriter {
             if (partNumber != null && !partNumber.isEmpty())
                 payloadBuilder.append("*PNO ")
                         .append(partNumber.length() > 32 ? partNumber.substring(0, 32) : partNumber);
-            payloadBuilder.append("*UIC 2");
+            payloadBuilder.append("*UIC ").append(currentUidConstruct);
             if (productName != null && !productName.isEmpty())
                 payloadBuilder.append("*PDT ")
                         .append(productName.length() > 32 ? productName.substring(0, 32) : productName);
@@ -729,15 +737,18 @@ public class MemoryWriter {
             // Word 1: [15:13]=MinorVer, [12:9]=MajorVer, [8:5]=TagType, [4:0]=Class
             // TagType per ATA Spec 2000: SRT-B=0x2, SRT-U=0xA
             String w0 = String.format("%04X", dsfid);
-            int word1 = ((0 & 0x7) << 13) | ((4 & 0xF) << 9) | ((tagType & 0xF) << 5) | (currentAtaClass & 0x1F);
+            int word1 = ((0 & 0x7) << 13) | ((4 & 0xF) << 9) | ((tagType & 0xF) << 5) | (ATA_CLASSIFICATION & 0x1F);
             String w1 = String.format("%04X", word1);
             // RDCount=0 for SRT (no Record Descriptors)
             int word2 = ((0x08 & 0xFF) << 8) | ((4 & 0xF) << 4) | (0 & 0xF);
             String w2 = String.format("%04X", word2);
-            // CRITICAL: Word 3 = CHIP'S USER MEMORY CAPACITY, not data written!
-            int ataMemWords = currentUserWords > 0 ? currentUserWords : dataWords;
+            // ATA Spec A-4-2: Word 3 = "Size of ATA Memory" = size of the ATA container,
+            // where the CRC occupies the LAST word. Using the actual container size (not the
+            // chip capacity) keeps the CRC at the spec-required position on ANY chip size.
+            int ataMemWords = dataWords;
             String w3 = String.format("%04X", ataMemWords);
-            Log.d(TAG, "📝 SRT: ATA Memory Words: " + ataMemWords + " (chip), Data: " + dataWords);
+            Log.d(TAG, "📝 SRT: ATA Memory (container): " + ataMemWords + " words; chip capacity: "
+                    + currentUserWords);
 
             // Encode payload to hex
             StringBuilder payloadHex = new StringBuilder();
@@ -812,7 +823,7 @@ public class MemoryWriter {
             if (partNumber != null && !partNumber.isEmpty())
                 birthPayload.append("PNO ").append(partNumber.length() > 32 ? partNumber.substring(0, 32) : partNumber)
                         .append("*");
-            birthPayload.append("UIC 1*");
+            birthPayload.append("UIC ").append(currentUidConstruct).append("*");
             if (productName != null && !productName.isEmpty())
                 birthPayload.append("PDT ")
                         .append(productName.length() > 32 ? productName.substring(0, 32) : productName).append("*");
@@ -910,18 +921,19 @@ public class MemoryWriter {
             // Word 3: ATA Memory Words = CHIP CAPACITY (not data size!)
             String w0 = String.format("%04X", 0x1E00);
             int tagType = AtaEncodingUtils.mapAtaTagType("DRT"); // 0x1 per ATA Spec
-            int word1 = ((0 & 0x7) << 13) | ((4 & 0xF) << 9) | ((tagType & 0xF) << 5) | (currentAtaClass & 0x1F);
+            int word1 = ((0 & 0x7) << 13) | ((4 & 0xF) << 9) | ((tagType & 0xF) << 5) | (ATA_CLASSIFICATION & 0x1F);
             String w1 = String.format("%04X", word1);
             Log.d(TAG, "📝 DRT ToC: TagType=" + tagType + " (0x" + Integer.toHexString(tagType) +
-                    "), Class=" + currentAtaClass);
+                    "), Class=" + ATA_CLASSIFICATION);
             // RDCount=2 (2 Record Descriptors: Lifecycle + Birth)
             int word2 = ((0x08 & 0xFF) << 8) | ((4 & 0xF) << 4) | (2 & 0xF);
             String w2 = String.format("%04X", word2);
-            // CRITICAL: Word 3 = CHIP'S USER MEMORY CAPACITY, not data written!
-            // This tells readers how much USER memory is available on the chip
-            int ataMemWords = currentUserWords > 0 ? currentUserWords : totalWords;
+            // ATA Spec A-4-3: Word 3 = "Size of ATA Memory" = size of the ATA container,
+            // ending at the ToC Trailer's CRC word. Use the actual container size so the
+            // Trailer lands at the end of ATA memory regardless of the chip's capacity.
+            int ataMemWords = totalWords;
             String w3 = String.format("%04X", ataMemWords);
-            Log.d(TAG, "📝 ATA Memory Words: " + ataMemWords + " (chip capacity), Data written: " + totalWords);
+            Log.d(TAG, "📝 ATA Memory (container): " + ataMemWords + " words; chip capacity: " + currentUserWords);
 
             // Build Record Descriptors (ATA Spec: Type[15:8] | Flags[7:0])
             // Flags: Bit 0 = 8-bit encoding, Bit 1 = Corrected birth
@@ -1055,7 +1067,7 @@ public class MemoryWriter {
             if (partNumber != null && !partNumber.isEmpty())
                 birthPayload.append("PNO ").append(partNumber.length() > 32 ? partNumber.substring(0, 32) : partNumber)
                         .append("*");
-            birthPayload.append("UIC 1*");
+            birthPayload.append("UIC ").append(currentUidConstruct).append("*");
             if (productName != null && !productName.isEmpty())
                 birthPayload.append("PDT ")
                         .append(productName.length() > 32 ? productName.substring(0, 32) : productName).append("*");
@@ -1125,9 +1137,9 @@ public class MemoryWriter {
             // Word 1: [ToC Minor:3][ToC Major:4][ATA Tag Type:4][ATA Class:5]
             // TagType per ATA Spec 2000: MRT=0x0
             int tagType = AtaEncodingUtils.mapAtaTagType("MRT"); // 0x0 per ATA Spec
-            int word1 = ((0 & 0x7) << 13) | ((4 & 0xF) << 9) | ((tagType & 0xF) << 5) | (currentAtaClass & 0x1F);
+            int word1 = ((0 & 0x7) << 13) | ((4 & 0xF) << 9) | ((tagType & 0xF) << 5) | (ATA_CLASSIFICATION & 0x1F);
             String w1 = String.format("%04X", word1);
-            Log.d(TAG, "📝 MRT ToC: Class=" + currentAtaClass + " (matches EPC Filter Value)");
+            Log.d(TAG, "📝 MRT ToC: Class=" + ATA_CLASSIFICATION + " (ATA Spec: fixed 0x01)");
             // Word 2: [Flags:8][Size of ToC Header:4][RDCount:4] (RDCount=2 for CDR +
             // Birth)
             int word2 = ((0x08 & 0xFF) << 8) | ((4 & 0xF) << 4) | (2 & 0xF);
