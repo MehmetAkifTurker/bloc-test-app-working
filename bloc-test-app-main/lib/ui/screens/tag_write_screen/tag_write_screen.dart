@@ -92,8 +92,8 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
   final TextEditingController productNameController = TextEditingController();
   final TextEditingController manufactureDateController =
       TextEditingController();
-  String _selectedPN = "D0002-00-00";
-  String _selectedManufacturer = "TG424";
+  String _selectedPN = "";
+  String _selectedManufacturer = "";
   static const double _menuMaxHeight = 260.0;
   static const BoxConstraints _iconButtonConstraints =
       BoxConstraints.tightFor(width: 40, height: 40);
@@ -138,13 +138,18 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
   static const _kProdListKey = 'product_name_list';
   static const _kTagTypesKey = 'tag_types';
   static const _kDescListKey = 'item_description_list';
+  // Last-used selection (sticky across sessions for fast batch writing).
+  static const _kLastPnKey = 'last_pn';
+  static const _kLastMfrKey = 'last_mfr';
+  static const _kLastDescKey = 'last_desc';
+  static const _kLastSerialKey = 'last_serial';
 
-  // Persistent lists
-  List<String> _descList = ["WATER BOILER"];
-  String _selectedDesc = "WATER BOILER";
-  List<String> _pnList = ["D0002-00-00", "D0002-00-01"];
-  List<String> _mfrList = ["TG424"];
-  List<String> _prodList = ["WATER BOILER"];
+  // Persistent lists (neutral by default; the user adds their own via "+").
+  List<String> _descList = [];
+  String _selectedDesc = "";
+  List<String> _pnList = [];
+  List<String> _mfrList = [];
+  List<String> _prodList = [];
 
   String get manufactureDateFormatted {
     final date = _mfgDate;
@@ -242,12 +247,46 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     _prodList = sp.getStringList(_kProdListKey) ?? _prodList;
     _descList = sp.getStringList(_kDescListKey) ?? _descList;
 
-    if (!_pnList.contains(_selectedPN)) _selectedPN = _pnList.first;
-    if (!_mfrList.contains(_selectedManufacturer)) {
-      _selectedManufacturer = _mfrList.first;
+    // Restore last-used selection (sticky batch writing); fall back to first item.
+    final lastPn = sp.getString(_kLastPnKey);
+    final lastMfr = sp.getString(_kLastMfrKey);
+    final lastDesc = sp.getString(_kLastDescKey);
+    final lastSerial = sp.getString(_kLastSerialKey);
+
+    _selectedPN = (lastPn != null && _pnList.contains(lastPn))
+        ? lastPn
+        : (_pnList.isNotEmpty ? _pnList.first : '');
+    _selectedManufacturer = (lastMfr != null && _mfrList.contains(lastMfr))
+        ? lastMfr
+        : (_mfrList.isNotEmpty ? _mfrList.first : '');
+    _selectedDesc = (lastDesc != null && _descList.contains(lastDesc))
+        ? lastDesc
+        : (_descList.isNotEmpty ? _descList.first : '');
+    if (lastSerial != null && lastSerial.isNotEmpty) {
+      serialNumberController.text = lastSerial;
     }
-    if (!_descList.contains(_selectedDesc)) _selectedDesc = _descList.first;
     // setState called by parent Future.wait completion
+  }
+
+  // Persist last-used selection + serial so the next session (or next write)
+  // starts where the user left off — key convenience for batch writing.
+  Future<void> _saveLastUsed() async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString(_kLastPnKey, _selectedPN);
+    await sp.setString(_kLastMfrKey, _selectedManufacturer);
+    await sp.setString(_kLastDescKey, _selectedDesc);
+    await sp.setString(_kLastSerialKey, serialNumberController.text.trim());
+  }
+
+  // Increment the trailing number of a serial (SN00001 -> SN00002), preserving
+  // the prefix and zero-padding. Returns unchanged if there's no trailing number.
+  String _incrementSerial(String s) {
+    final m = RegExp(r'^(.*?)(\d+)$').firstMatch(s);
+    if (m == null) return s;
+    final prefix = m.group(1)!;
+    final digits = m.group(2)!;
+    final next = (int.parse(digits) + 1).toString().padLeft(digits.length, '0');
+    return '$prefix$next';
   }
 
   Future<void> _saveList(String key, List<String> list) async {
@@ -461,6 +500,15 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
       }
 
       if (epcSuccess == true && userMemSuccess == true) {
+        // Remember this selection and auto-increment the serial so the next tag
+        // in a batch is ready with one tap (only the serial changed).
+        await _saveLastUsed();
+        if (mounted) {
+          setState(() {
+            serialNumberController.text =
+                _incrementSerial(serialNumberController.text.trim());
+          });
+        }
         if (t.enablePermalock && !permalockOk) {
           _showSnackBar("Write OK, but PERMALOCK FAILED. Tag not locked.");
         } else if (t.enablePermalock) {
@@ -751,7 +799,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                 const SizedBox(height: 12),
                 _alignedFieldRow(
                   field: DropdownButtonFormField<String>(
-                    value: _selectedPN,
+                    value: _pnList.contains(_selectedPN) ? _selectedPN : null,
                     decoration: const InputDecoration(labelText: "Part Number"),
                     isDense: true,
                     menuMaxHeight: _menuMaxHeight,
@@ -796,7 +844,9 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                 ),
                 _alignedFieldRow(
                   field: DropdownButtonFormField<String>(
-                    value: _selectedManufacturer,
+                    value: _mfrList.contains(_selectedManufacturer)
+                        ? _selectedManufacturer
+                        : null,
                     menuMaxHeight: _menuMaxHeight,
                     decoration:
                         const InputDecoration(labelText: "Manufacturer"),
@@ -836,7 +886,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                 const SizedBox(height: 12),
                 _alignedFieldRow(
                   field: DropdownButtonFormField<String>(
-                    value: _selectedDesc,
+                    value: _descList.contains(_selectedDesc) ? _selectedDesc : null,
                     menuMaxHeight: _menuMaxHeight,
                     decoration:
                         const InputDecoration(labelText: "Item Description"),
