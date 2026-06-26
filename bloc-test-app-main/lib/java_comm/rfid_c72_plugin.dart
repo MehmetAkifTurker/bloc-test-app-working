@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -25,9 +26,12 @@ class RfidC72Plugin {
   // --- DEBUG STREAM ---
   static final _debugCtrl = StreamController<String>.broadcast();
   static Stream<String> get debugStream => _debugCtrl.stream;
-  static bool verbose = true;
+  // Off in release builds: logging runs in hot paths (barcode loop, triggers)
+  // many times/sec and adds needless overhead in production.
+  static bool verbose = !kReleaseMode;
 
   static void _log(String msg) {
+    if (!verbose) return;
     final ts = DateTime.now().toIso8601String().substring(11, 23);
     final line = 'RFID[$ts] $msg';
     debugPrint(line);
