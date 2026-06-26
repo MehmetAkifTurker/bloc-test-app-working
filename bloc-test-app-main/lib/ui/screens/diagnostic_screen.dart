@@ -54,7 +54,8 @@ class _DiagnosticScreenState extends State<DiagnosticScreen> {
           log("🔬   TID: ${tagData['tid']}");
           log("🔬   Direct TID: ${tagData['directTid']}");
           log("🔬   Has USER Memory: ${tagData['hasUserMemory']}");
-          log("🔬   USER Preview: ${tagData['userMemory']?.toString().substring(0, 16)}...");
+          final userPrev = tagData['userMemory']?.toString() ?? '';
+          log("🔬   USER Preview: ${userPrev.length > 16 ? '${userPrev.substring(0, 16)}...' : userPrev}");
 
           await Future.delayed(const Duration(milliseconds: 800));
         } catch (e) {
@@ -102,8 +103,11 @@ class _DiagnosticScreenState extends State<DiagnosticScreen> {
                         Text('Direct TID: ${result['directTid']}'),
                         Text('RSSI: ${result['rssi']}'),
                         Text('Has USER: ${result['hasUserMemory']}'),
-                        Text(
-                            'USER: ${result['userMemory']?.toString().substring(0, 32)}...'),
+                        Builder(builder: (_) {
+                          final u = result['userMemory']?.toString() ?? '';
+                          final shown = u.length > 32 ? '${u.substring(0, 32)}...' : u;
+                          return Text('USER: $shown');
+                        }),
                       ],
                     ),
                   ),
