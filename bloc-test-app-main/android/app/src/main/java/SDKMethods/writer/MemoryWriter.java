@@ -267,12 +267,14 @@ public class MemoryWriter {
             Log.d(TAG, "  End block: " + endBlock);
             Log.d(TAG, "  Block count: " + blockCount);
 
-            // Create mask for blocks to lock (1 bit per block)
+            // Create mask for blocks to lock (1 bit per block).
+            // SDK (IUHF.uhfBlockPermalock): "high level is at front" => MSB-first.
+            // Block N => bit (7 - N%8) of byte N/8. Block 0 => 0x80, not 0x01.
             byte[] mask = new byte[(blockCount + 7) / 8];
             for (int i = 0; i < blockCount; i++) {
                 int byteIdx = i / 8;
                 int bitIdx = i % 8;
-                mask[byteIdx] |= (1 << bitIdx);
+                mask[byteIdx] |= (byte) (1 << (7 - bitIdx));
             }
 
             // Log mask for debugging
@@ -366,6 +368,28 @@ public class MemoryWriter {
             Log.e(TAG, "Error in permalockUserBlocks: " + e.getMessage(), e);
             return false;
         }
+    }
+
+    /**
+     * Apply the permalock computed by the most recent USER write, starting at word 0
+     * (ToC header). Used to honor the in-app "Permalock" toggle right after writing.
+     *
+     * Coverage per record type (set during the write):
+     *  - SRT-B / DRT / MRT: ToC + RDs + Birth Record (block-aligned; Lifecycle stays writable)
+     *  - SRT-U: 0 words -> nothing locked (utility tags stay rewritable per ATA Spec)
+     *
+     * WARNING: permalock is PERMANENT and IRREVERSIBLE.
+     *
+     * @return true if locked (or nothing to lock); false if the lock failed.
+     */
+    public boolean applyCalculatedPermalock(String accessPwdHex) {
+        int words = lastCalculatedPermalockWords;
+        if (words <= 0) {
+            Log.i(TAG, "applyCalculatedPermalock: nothing to lock (SRT-U or not calculated)");
+            return true; // not an error: utility tags are intentionally left open
+        }
+        Log.i(TAG, "applyCalculatedPermalock: locking " + words + " words from word 0");
+        return permalockUserBlocks(accessPwdHex, 0, words);
     }
 
     // ==================== EPC WRITE ====================
@@ -846,19 +870,20 @@ public class MemoryWriter {
             String birthPayloadHex = AtaEncodingUtils.bitsToHex(birthBits);
             int birthPayloadWords = birthBits.length() / 16;
 
-            // ATA Spec: ToC Header (4) + RDs (4) + Birth = 8 + Birth
-            // Block Permalock locks 16-word blocks. To keep Lifecycle writable:
-            // - Birth Record must end at word 15 or later (so Lifecycle starts at word 16+)
-            // - birthAddress = 8, so birthRecordSize needs to be >= 8 words
-            // Minimum Birth: 2 (header) + payload + 1 (CRC)
-            // If birthPayloadWords < 5, pad to ensure birthRecordSize >= 8
-            int minBirthPayloadWords = 5; // 2 + 5 + 1 = 8 words minimum
-            if (birthPayloadWords < minBirthPayloadWords) {
-                int padWords = minBirthPayloadWords - birthPayloadWords;
-                for (int i = 0; i < padWords * 4; i++)
+            // ATA Spec: ToC Header (4) + RDs (4) + Birth = 8 + Birth.
+            // Block Permalock locks whole 16-word blocks. Pad the Birth Record so the
+            // Lifecycle Record starts exactly on a 16-word block boundary; then
+            // permalocking every block up to Birth-end can NEVER overlap the
+            // (rewritable) Lifecycle Record. Birth = 2 (header) + payload + 1 (CRC).
+            final int birthAddr = 4 + 4; // ToC header + 2 record descriptors
+            int lifecycleStartUnpadded = birthAddr + (2 + birthPayloadWords + 1);
+            int alignPad = (16 - (lifecycleStartUnpadded % 16)) % 16;
+            if (alignPad > 0) {
+                for (int i = 0; i < alignPad * 4; i++)
                     birthPayloadHex += "0";
-                birthPayloadWords = minBirthPayloadWords;
-                Log.d(TAG, "📝 Birth Record padded to " + birthPayloadWords + " payload words (Lifecycle alignment)");
+                birthPayloadWords += alignPad;
+                Log.d(TAG, "📝 Birth padded " + alignPad + " words so Lifecycle is block-aligned at word "
+                        + (birthAddr + 2 + birthPayloadWords + 1));
             }
 
             int birthRecordSize = 2 + birthPayloadWords + 1;
@@ -964,17 +989,10 @@ public class MemoryWriter {
             int protectedWords = headerWords + rdWords + birthRecordSize;
             // Round up to 16-word block boundary (Block Permalock operates on 16-word
             // blocks)
+            // Birth was padded so Lifecycle is block-aligned, hence protectedWords is
+            // already a multiple of 16 and the lock stops exactly where Lifecycle begins.
             int permalockBlocks = (protectedWords + 15) / 16;
             int calculatedPermalockWords = permalockBlocks * 16;
-
-            // For DRT, cap at Block 0 (16 words) to keep Lifecycle writable
-            // If Birth is larger, we accept that only the first 16 words are protected
-            if (calculatedPermalockWords > 16 && lifecycleAddress < calculatedPermalockWords) {
-                Log.w(TAG,
-                        "⚠️ Birth Record extends into Block 1 (ends at word " + (birthAddress + birthRecordSize - 1) +
-                                "), capping permalock at 16 words to keep Lifecycle writable");
-                calculatedPermalockWords = 16;
-            }
             lastCalculatedPermalockWords = calculatedPermalockWords;
             Log.d(TAG,
                     "📝 Calculated permalock: " + calculatedPermalockWords + " words (" + permalockBlocks + " blocks)");

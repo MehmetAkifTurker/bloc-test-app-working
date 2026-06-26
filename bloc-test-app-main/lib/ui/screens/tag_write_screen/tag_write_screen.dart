@@ -386,7 +386,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
         epcWords: t.epcWords,
         userWords: t.userWords,
         permalockWords: t.permalockWords,
-        enablePermalock: false,
+        enablePermalock: t.enablePermalock,
         lockEpc: false,
         lockUser: false,
         accessPwd: '00000000',
@@ -416,8 +416,24 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
         expireDateFormatted,
       );
 
+      // Apply permalock ONLY if the user enabled it for this tag type and the
+      // USER write succeeded. Permalock is PERMANENT and IRREVERSIBLE.
+      // SRT-U computes 0 lock words natively, so it stays rewritable even if toggled.
+      bool permalockOk = true;
+      if (userMemSuccess == true && t.enablePermalock) {
+        permalockOk =
+            (await RfidC72Plugin.applyAtaPermalock(accessPwd: '00000000')) ??
+                false;
+      }
+
       if (epcSuccess == true && userMemSuccess == true) {
-        _showSnackBar("EPC and User Memory write successful!");
+        if (t.enablePermalock && !permalockOk) {
+          _showSnackBar("Write OK, but PERMALOCK FAILED. Tag not locked.");
+        } else if (t.enablePermalock) {
+          _showSnackBar("EPC + User Memory written and permalocked!");
+        } else {
+          _showSnackBar("EPC and User Memory write successful!");
+        }
       } else if (epcSuccess != true && userMemSuccess == true) {
         _showSnackBar("User Memory write successful, but EPC write failed.");
       } else if (epcSuccess == true && userMemSuccess != true) {

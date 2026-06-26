@@ -399,6 +399,16 @@ class RfidC72Plugin {
     });
   }
 
+  /// Apply the permalock computed by the most recent USER write (word 0..N),
+  /// covering ToC + RDs + Birth Record. For SRT-U nothing is locked.
+  /// WARNING: PERMANENT and IRREVERSIBLE. Call only after a successful write
+  /// and only when the user enabled the Permalock option.
+  static Future<bool?> applyAtaPermalock({String accessPwd = '00000000'}) {
+    return _channel.invokeMethod<bool>('applyAtaPermalock', {
+      'accessPwd': accessPwd,
+    });
+  }
+
   static Future<String?> readUserMemory() async {
     // (You might not need epcHex, but keep it for now for future filtering)
     return await _channel.invokeMethod('readUserMemory');

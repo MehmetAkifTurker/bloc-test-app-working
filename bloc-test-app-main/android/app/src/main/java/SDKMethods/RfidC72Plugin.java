@@ -424,6 +424,14 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 // Get the recommended permalock size from last write operation
                 result.success(UHFHelper.getInstance().getCalculatedPermalockWords());
                 break;
+            case "applyAtaPermalock": {
+                // Apply the permalock computed by the last USER write (word 0..N),
+                // honoring the in-app Permalock toggle. IRREVERSIBLE.
+                String accessPwd = call.argument("accessPwd");
+                result.success(UHFHelper.getInstance().applyCalculatedPermalock(
+                        accessPwd != null ? accessPwd : "00000000"));
+                break;
+            }
             case "readBlockLockStatus": {
                 // Read block permalock status for a tag
                 String epcHex = call.argument("epc");

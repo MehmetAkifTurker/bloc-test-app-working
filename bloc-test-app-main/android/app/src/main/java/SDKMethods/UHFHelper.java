@@ -277,6 +277,10 @@ public class UHFHelper {
         return MemoryWriter.getInstance().permalockUserBlocks(accessPwdHex, startWord, wordCount);
     }
 
+    public boolean applyCalculatedPermalock(String accessPwdHex) {
+        return MemoryWriter.getInstance().applyCalculatedPermalock(accessPwdHex);
+    }
+
     /**
      * Get the calculated permalock size from the last write operation.
      * Call this AFTER writeAtaUserMemoryWithPayload() to get the recommended

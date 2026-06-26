@@ -11,6 +11,7 @@ class TagType {
   final int permalockWords;
   final int defaultFilter;
   final bool isBuiltIn; // Built-in presets cannot be deleted
+  final bool enablePermalock; // Apply Block Permalock on write (off for SRT-U)
 
   TagType({
     required this.name,
@@ -20,6 +21,7 @@ class TagType {
     required this.permalockWords,
     required this.defaultFilter,
     this.isBuiltIn = false,
+    this.enablePermalock = true,
   });
 
   Map<String, dynamic> toJson() => {
@@ -30,6 +32,7 @@ class TagType {
         'permalockWords': permalockWords,
         'defaultFilter': defaultFilter,
         'isBuiltIn': isBuiltIn,
+        'enablePermalock': enablePermalock,
       };
 
   factory TagType.fromJson(Map<String, dynamic> json) => TagType(
@@ -40,6 +43,7 @@ class TagType {
         permalockWords: json['permalockWords'],
         defaultFilter: json['defaultFilter'],
         isBuiltIn: json['isBuiltIn'] ?? false,
+        enablePermalock: json['enablePermalock'] ?? true,
       );
 
   @override
@@ -337,6 +341,7 @@ class _TagTypeManagerPageState extends State<TagTypeManagerPage> {
       userWords: _userWords,
       permalockWords: _userWords == 0 ? 0 : _permalockVal,
       defaultFilter: 14,
+      enablePermalock: _applyPermalock,
     );
     Navigator.pop(context, tagType);
   }
