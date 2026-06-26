@@ -2,6 +2,7 @@ package SDKMethods;
 
 import android.content.Context;
 
+import io.reactivex.Observable;
 import io.reactivex.Observer;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.annotations.NonNull;
@@ -44,7 +45,7 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
         final MethodChannel channel = new MethodChannel(binding.getBinaryMessenger(), "rfid_c72_plugin");
-        
+
         // Location event channel
         final EventChannel locationChannel = new EventChannel(binding.getBinaryMessenger(), "LocationStatus");
         locationChannel.setStreamHandler(new EventChannel.StreamHandler() {
@@ -58,11 +59,11 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 LocationManager.setLocationSink(null);
             }
         });
-        
+
         initConnectedEvent(binding.getBinaryMessenger());
         initReadEvent(binding.getBinaryMessenger());
         channel.setMethodCallHandler(new RfidC72Plugin());
-        
+
         appContext = binding.getApplicationContext();
         UHFHelper.getInstance().init(appContext);
         UHFHelper.getInstance().setUhfListener(createUhfListener());
@@ -91,17 +92,28 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                         .subscribeOn(Schedulers.newThread())
                         .observeOn(AndroidSchedulers.mainThread())
                         .subscribe(new Observer<Boolean>() {
-                            @Override public void onSubscribe(@NonNull Disposable d) {}
-                            @Override public void onNext(@NonNull Boolean isConnected) {
+                            @Override
+                            public void onSubscribe(@NonNull Disposable d) {
+                            }
+
+                            @Override
+                            public void onNext(@NonNull Boolean isConnected) {
                                 eventSink.success(isConnected);
                             }
-                            @Override public void onError(@NonNull Throwable e) {}
-                            @Override public void onComplete() {}
+
+                            @Override
+                            public void onError(@NonNull Throwable e) {
+                            }
+
+                            @Override
+                            public void onComplete() {
+                            }
                         });
             }
 
             @Override
-            public void onCancel(Object arguments) {}
+            public void onCancel(Object arguments) {
+            }
         });
     }
 
@@ -114,17 +126,28 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                         .subscribeOn(Schedulers.newThread())
                         .observeOn(AndroidSchedulers.mainThread())
                         .subscribe(new Observer<String>() {
-                            @Override public void onSubscribe(@NonNull Disposable d) {}
-                            @Override public void onNext(@NonNull String tagJson) {
+                            @Override
+                            public void onSubscribe(@NonNull Disposable d) {
+                            }
+
+                            @Override
+                            public void onNext(@NonNull String tagJson) {
                                 eventSink.success(tagJson);
                             }
-                            @Override public void onError(@NonNull Throwable e) {}
-                            @Override public void onComplete() {}
+
+                            @Override
+                            public void onError(@NonNull Throwable e) {
+                            }
+
+                            @Override
+                            public void onComplete() {
+                            }
                         });
             }
 
             @Override
-            public void onCancel(Object arguments) {}
+            public void onCancel(Object arguments) {
+            }
         });
     }
 
@@ -163,13 +186,24 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 result.success(true);
                 break;
             case "connect":
-                result.success(UHFHelper.getInstance().connect());
+                // Run heavy UHF initialization on background thread
+                Observable.fromCallable(() -> UHFHelper.getInstance().connect())
+                    .subscribeOn(Schedulers.io())
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe(success -> result.success(success), 
+                               error -> result.success(false));
                 break;
             case "isConnected":
                 result.success(UHFHelper.getInstance().isConnected());
                 break;
             case "setPowerLevel":
-                result.success(UHFHelper.getInstance().setPowerLevel(call.argument("value")));
+                // Run on background thread
+                final String powerValue = call.argument("value");
+                Observable.fromCallable(() -> UHFHelper.getInstance().setPowerLevel(powerValue))
+                    .subscribeOn(Schedulers.io())
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe(success -> result.success(success), 
+                               error -> result.success(false));
                 break;
             case "setWorkArea":
                 result.success(UHFHelper.getInstance().setWorkArea(call.argument("value")));
@@ -185,6 +219,10 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 break;
             case "closeScan":
                 result.success(UHFHelper.getInstance().closeScan());
+                break;
+            case "disableLaser":
+                UHFHelper.getInstance().disableLaser();
+                result.success(true);
                 break;
             case "readBarcode":
                 result.success(UHFHelper.getInstance().readBarcode());
@@ -212,7 +250,21 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 }
                 break;
             }
+            case "programConstruct1Epc": {
+                // Construct 1: Only Serial Number (no Part Number) - for Utility tags
+                String serialNumber = call.argument("serialNumber");
+                String manager = call.argument("manager");
+                String accessPwd = call.argument("accessPwd");
+                Integer filter = call.argument("filter");
+                result.success(UHFHelper.getInstance().programConstruct1Epc(
+                        serialNumber != null ? serialNumber : "",
+                        manager != null ? manager : " TG424",
+                        accessPwd != null ? accessPwd : "00000000",
+                        filter != null ? filter : 0));
+                break;
+            }
             case "programConstruct2Epc": {
+                // Construct 2: Part Number + Serial Number - standard format
                 String partNumber = call.argument("partNumber");
                 String serialNumber = call.argument("serialNumber");
                 String manager = call.argument("manager");
@@ -238,11 +290,23 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
             case "readSingleTagMeta":
                 result.success(UHFHelper.getInstance().readSingleTagMeta());
                 break;
+            case "readSingleTagBasicJson":
+                result.success(UHFHelper.getInstance().readSingleTagBasicJson());
+                break;
             case "readUserMemoryForTid":
                 result.success(UHFHelper.getInstance().readUserMemoryForTid(call.argument("tid")));
                 break;
             case "readUserMemoryForEpcFull":
                 result.success(UHFHelper.getInstance().readUserMemoryForEpcFull(call.argument("epc")));
+                break;
+            case "readFullTidForEpc":
+                result.success(UHFHelper.getInstance().readFullTidForEpc(call.argument("epc")));
+                break;
+            case "readExtendedTidForEpc":
+                result.success(UHFHelper.getInstance().readExtendedTidForEpc(call.argument("epc")));
+                break;
+            case "readUserMemoryForTidStrict":
+                result.success(UHFHelper.getInstance().readUserMemoryForTidStrict(call.argument("tid")));
                 break;
             case "diagnosticReadSingleTag":
                 result.success(UHFHelper.getInstance().diagnosticReadSingleTag());
@@ -290,6 +354,12 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
             case "stopLocation":
                 result.success(UHFHelper.getInstance().stopLocation());
                 break;
+            case "setLocationSoundEnabled": {
+                Boolean enabled = call.argument("enabled");
+                UHFHelper.getInstance().setLocationSoundEnabled(enabled != null && enabled);
+                result.success(true);
+                break;
+            }
             case "configureChipAta": {
                 String recordType = call.argument("recordType");
                 Integer epcWords = call.argument("epcWords");
@@ -316,6 +386,14 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
             case "readUserFieldsForEpc":
                 result.success(UHFHelper.getInstance().readUserFieldsForEpc(call.argument("epc")));
                 break;
+            case "setAccessPassword": {
+                String oldPassword = call.argument("oldPassword");
+                String newPassword = call.argument("newPassword");
+                result.success(UHFHelper.getInstance().setAccessPassword(
+                        oldPassword != null ? oldPassword : "00000000",
+                        newPassword != null ? newPassword : "00000001"));
+                break;
+            }
             case "lockUserMemory": {
                 String accessPwd = call.argument("accessPwd");
                 Boolean permanent = call.argument("permanent");
@@ -342,6 +420,44 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                         wordCount != null ? wordCount : 12));
                 break;
             }
+            case "getCalculatedPermalockWords":
+                // Get the recommended permalock size from last write operation
+                result.success(UHFHelper.getInstance().getCalculatedPermalockWords());
+                break;
+            case "readBlockLockStatus": {
+                // Read block permalock status for a tag
+                String epcHex = call.argument("epc");
+                Integer blockCount = call.argument("blockCount");
+                java.util.Map<String, Object> lockStatus = UHFHelper.getInstance().readBlockLockStatus(
+                        epcHex != null ? epcHex : "",
+                        blockCount != null ? blockCount : 4);
+                if (lockStatus != null) {
+                    result.success(new org.json.JSONObject(lockStatus).toString());
+                } else {
+                    result.success(null);
+                }
+                break;
+            }
+            case "parseAtaLockFlags": {
+                // Parse ATA Spec 2000 lock flags from USER memory
+                String userHex = call.argument("userHex");
+                java.util.Map<String, Object> flags = UHFHelper.parseAtaLockFlags(userHex);
+                if (flags != null) {
+                    result.success(new org.json.JSONObject(flags).toString());
+                } else {
+                    result.success(null);
+                }
+                break;
+            }
+            case "setFilterValueMask": {
+                Integer filterValue = call.argument("filterValue");
+                result.success(UHFHelper.getInstance().setFilterValueMask(
+                        filterValue != null ? filterValue : -1));
+                break;
+            }
+            case "clearAllFilters":
+                result.success(UHFHelper.getInstance().clearAllFilters());
+                break;
             default:
                 result.notImplemented();
                 break;

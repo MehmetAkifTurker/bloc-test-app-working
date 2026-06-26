@@ -1,10 +1,20 @@
 {
   // RFID Manager - IDE Configuration
   
-  // Disable Java/Gradle auto-configuration for Flutter project
+  // Completely disable Java Language Server for this Flutter project
+  "java.server.launchMode": "LightWeight",
   "java.project.sourcePaths": [],
   "java.configuration.updateBuildConfiguration": "disabled",
   "java.import.gradle.enabled": false,
+  "java.import.maven.enabled": false,
+  "java.autobuild.enabled": false,
+  "java.project.importOnFirstTimeStartup": "disabled",
+  "java.project.importHint": false,
+  "java.import.exclusions": [
+    "**/android/**"
+  ],
+  "java.jdt.ls.vmargs": "-Xms64m -Xmx256m",
+  "redhat.telemetry.enabled": false,
   
   // Exclude build artifacts from file explorer
   "files.exclude": {

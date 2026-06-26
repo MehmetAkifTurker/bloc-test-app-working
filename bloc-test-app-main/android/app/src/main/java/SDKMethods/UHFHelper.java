@@ -19,7 +19,8 @@ import SDKMethods.writer.MemoryWriter;
 public class UHFHelper {
     private static UHFHelper instance;
 
-    private UHFHelper() {}
+    private UHFHelper() {
+    }
 
     public static synchronized UHFHelper getInstance() {
         if (instance == null) {
@@ -91,6 +92,10 @@ public class UHFHelper {
         return InventoryManager.getInstance().readSingleTagMeta();
     }
 
+    public String readSingleTagBasicJson() {
+        return InventoryManager.getInstance().readSingleTagBasicJson();
+    }
+
     public List<String> scanMultipleTags(int maxTags) {
         return InventoryManager.getInstance().scanMultipleTags(maxTags);
     }
@@ -147,6 +152,20 @@ public class UHFHelper {
         return UHFManager.getInstance().playSound();
     }
 
+    public void disableLaser() {
+        UHFManager.getInstance().disableLaser();
+    }
+
+    // ==================== FILTER ====================
+
+    public boolean setFilterValueMask(int filterValue) {
+        return UHFManager.getInstance().setFilterValueMask(filterValue);
+    }
+
+    public boolean clearAllFilters() {
+        return UHFManager.getInstance().clearAllFilters();
+    }
+
     // ==================== MEMORY READ ====================
 
     public String readUserMemory() {
@@ -159,6 +178,35 @@ public class UHFHelper {
 
     public String readUserMemoryForTid(String tidHex) {
         return MemoryReader.getInstance().readUserMemoryForTid(tidHex);
+    }
+
+    /**
+     * Read TID (7 words = 28 chars) using EPC as filter
+     * Faster than full read, sufficient for most tags
+     */
+    public String readFullTidForEpc(String epcHex) {
+        return MemoryReader.getInstance().readFullTidForEpc(epcHex);
+    }
+
+    /**
+     * Read extended TID (8 words = 32 chars) using EPC as filter
+     * Use this when 28-char TID shows collision (same TID for different EPCs)
+     */
+    public String readExtendedTidForEpc(String epcHex) {
+        return MemoryReader.getInstance().readExtendedTidForEpc(epcHex);
+    }
+
+    /**
+     * Read USER memory using TID filter - STRICT mode (NO fallback!)
+     * 
+     * CRITICAL: Does NOT fallback to shorter TID if the given TID fails!
+     * This prevents reading wrong tag data in TID collision scenarios.
+     * 
+     * Use this when you have an extended TID (32c) from collision resolution
+     * and want to ensure you read the CORRECT tag (not a colliding tag).
+     */
+    public String readUserMemoryForTidStrict(String tidHex) {
+        return MemoryReader.getInstance().readUserMemoryForTidStrict(tidHex);
     }
 
     public String readUserMemoryForEpcWithFilter(String epcHex) {
@@ -186,6 +234,12 @@ public class UHFHelper {
         return MemoryWriter.getInstance().writeTagADIConstruct2(partNumber, serialNumber);
     }
 
+    public boolean programConstruct1Epc(String serialNumber,
+            String manager6, String accessPwdHex, int filterValue) {
+        return MemoryWriter.getInstance().programConstruct1Epc(serialNumber,
+                manager6, accessPwdHex, filterValue);
+    }
+
     public boolean programConstruct2Epc(String partNumber, String serialNumber,
             String manager6, String accessPwdHex, int filterValue) {
         return MemoryWriter.getInstance().programConstruct2Epc(partNumber, serialNumber,
@@ -204,19 +258,56 @@ public class UHFHelper {
         return MemoryWriter.getInstance().updateLifecycleRecord(epcHex, currentPartNumber,
                 partModLevel, expirationDate, certificateNumber, lastOverhaulDate);
     }
-    
+
     // ==================== MEMORY LOCKING ====================
-    
+
+    public boolean setAccessPassword(String oldPassword, String newPassword) {
+        return MemoryWriter.getInstance().setAccessPassword(oldPassword, newPassword);
+    }
+
     public boolean lockUserMemory(String accessPwdHex, boolean permanentLock) {
         return MemoryWriter.getInstance().lockUserMemory(accessPwdHex, permanentLock);
     }
-    
+
     public boolean lockEpcMemory(String accessPwdHex, boolean permanentLock) {
         return MemoryWriter.getInstance().lockEpcMemory(accessPwdHex, permanentLock);
     }
-    
+
     public boolean permalockUserBlocks(String accessPwdHex, int startWord, int wordCount) {
         return MemoryWriter.getInstance().permalockUserBlocks(accessPwdHex, startWord, wordCount);
+    }
+
+    /**
+     * Get the calculated permalock size from the last write operation.
+     * Call this AFTER writeAtaUserMemoryWithPayload() to get the recommended
+     * permalock size.
+     * 
+     * @return Recommended permalock words based on actual data written (0 if not
+     *         yet calculated)
+     */
+    public int getCalculatedPermalockWords() {
+        return MemoryWriter.getInstance().getLastCalculatedPermalockWords();
+    }
+
+    /**
+     * Read block permalock status for a tag.
+     * 
+     * @param epcHex     EPC of the tag
+     * @param blockCount Number of 16-word blocks to check
+     * @return Map with lock status or null on error
+     */
+    public java.util.Map<String, Object> readBlockLockStatus(String epcHex, int blockCount) {
+        return MemoryReader.getInstance().readBlockLockStatus(epcHex, blockCount);
+    }
+
+    /**
+     * Parse ATA Spec 2000 Lock Flags from USER memory.
+     * 
+     * @param userHex USER memory hex string
+     * @return Map with parsed flags or null
+     */
+    public static java.util.Map<String, Object> parseAtaLockFlags(String userHex) {
+        return MemoryReader.parseAtaLockFlags(userHex);
     }
 
     // ==================== LOCATION ====================
@@ -231,5 +322,9 @@ public class UHFHelper {
 
     public boolean stopLocation() {
         return LocationManager.getInstance().stopLocation();
+    }
+
+    public void setLocationSoundEnabled(boolean enabled) {
+        LocationManager.getInstance().setSoundEnabled(enabled);
     }
 }
