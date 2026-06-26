@@ -289,8 +289,9 @@ class RfidC72Plugin {
     String partNumber,
     String serialNumber,
     String manufactureDate,
-    String expireDate,
-  ) {
+    String expireDate, {
+    Map<String, String>? extraFields,
+  }) {
     return _channel.invokeMethod<bool>('writeAtaUserMemoryWithPayload', {
       'manufacturer': manufacturer,
       'productName': productName, // boş string yollanabilir
@@ -298,6 +299,8 @@ class RfidC72Plugin {
       'serialNumber': serialNumber,
       'manufactureDate': manufactureDate,
       'expireDate': expireDate,
+      // Optional extra ATA TEIs (universal write); skipped natively if empty/invalid.
+      if (extraFields != null && extraFields.isNotEmpty) 'extraFields': extraFields,
     });
   }
 

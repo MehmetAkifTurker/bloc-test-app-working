@@ -318,13 +318,15 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 String serialNumber = call.argument("serialNumber");
                 String manufactureDate = call.argument("manufactureDate");
                 String expireDate = call.argument("expireDate");
+                java.util.Map<String, String> extraFields = call.argument("extraFields");
                 result.success(UHFHelper.getInstance().writeAtaUserMemoryWithPayload(
                         manufacturer != null ? manufacturer : "",
                         productName != null ? productName : "",
                         partNumber != null ? partNumber : "",
                         serialNumber != null ? serialNumber : "",
                         manufactureDate != null ? manufactureDate : "",
-                        expireDate != null ? expireDate : ""));
+                        expireDate != null ? expireDate : "",
+                        extraFields));
                 break;
             }
             case "updateLifecycleRecord": {

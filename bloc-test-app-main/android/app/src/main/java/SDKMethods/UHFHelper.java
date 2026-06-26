@@ -248,8 +248,15 @@ public class UHFHelper {
 
     public boolean writeAtaUserMemoryWithPayload(String manufacturer, String productName,
             String partNumber, String serialNumber, String manufactureDate, String expireDate) {
+        return writeAtaUserMemoryWithPayload(manufacturer, productName,
+                partNumber, serialNumber, manufactureDate, expireDate, null);
+    }
+
+    public boolean writeAtaUserMemoryWithPayload(String manufacturer, String productName,
+            String partNumber, String serialNumber, String manufactureDate, String expireDate,
+            java.util.Map<String, String> extraFields) {
         return MemoryWriter.getInstance().writeAtaUserMemoryWithPayload(manufacturer, productName,
-                partNumber, serialNumber, manufactureDate, expireDate);
+                partNumber, serialNumber, manufactureDate, expireDate, extraFields);
     }
 
     public boolean updateLifecycleRecord(String epcHex, String currentPartNumber,

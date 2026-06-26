@@ -45,6 +45,36 @@ const List<FilterOption> kAtaFilterOptions = [
   FilterOption(60, 'Other Non-Flyable Equipment'),
 ];
 
+/// Optional ATA Spec 2000 TEIs (beyond the common fields). Lets the user add any
+/// of these to the Birth Record so the app is universal, not tag-specific, while
+/// the common fields above keep the typical workflow one-glance simple.
+class OptionalTei {
+  final String code;
+  final String label;
+  final int maxLen;
+  const OptionalTei(this.code, this.label, this.maxLen);
+}
+
+const List<OptionalTei> kOptionalTeis = [
+  OptionalTei('PNR', 'Current Part Number', 32),
+  OptionalTei('SEQ', 'Sequence Number', 30),
+  OptionalTei('OVD', 'Last Overhaul Date (YYYYMMDD)', 8),
+  OptionalTei('DOH', 'Hydrostatic Test Date (YYYYMMDD)', 8),
+  OptionalTei('PML', 'Part Modification Level', 100),
+  OptionalTei('TDN', 'Certificate / Type Design No.', 32),
+  OptionalTei('HAZ', 'Hazardous Material Code', 6),
+  OptionalTei('LLE', 'Life Limited (0/1)', 1),
+  OptionalTei('LOT', 'Lot / Batch Number', 15),
+  OptionalTei('CND', 'Condition (SRV/UNS/UNK)', 3),
+  OptionalTei('CAG', 'CAGE Code', 5),
+];
+
+class _ExtraField {
+  final OptionalTei tei;
+  final TextEditingController ctrl = TextEditingController();
+  _ExtraField(this.tei);
+}
+
 class TagWriteScreen extends StatefulWidget {
   const TagWriteScreen({super.key});
 
@@ -53,6 +83,9 @@ class TagWriteScreen extends StatefulWidget {
 }
 
 class _TagWriteScreenState extends State<TagWriteScreen> {
+  // Optional extra ATA TEIs the user added for this write (universal write).
+  final List<_ExtraField> _extraFields = [];
+
   final TextEditingController serialNumberController =
       TextEditingController(text: "SN00001");
   final TextEditingController manufacturerController = TextEditingController();
@@ -414,6 +447,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
         serialNumber,
         manufactureDateFormatted,
         expireDateFormatted,
+        extraFields: _collectExtraFields(),
       );
 
       // Apply permalock ONLY if the user enabled it for this tag type and the
@@ -452,6 +486,102 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  void dispose() {
+    for (final f in _extraFields) {
+      f.ctrl.dispose();
+    }
+    super.dispose();
+  }
+
+  // Collect non-empty optional TEIs as {CODE: value} for the universal write.
+  Map<String, String> _collectExtraFields() {
+    final map = <String, String>{};
+    for (final f in _extraFields) {
+      final v = f.ctrl.text.trim();
+      if (v.isNotEmpty) map[f.tei.code] = v;
+    }
+    return map;
+  }
+
+  Future<void> _addExtraFieldDialog() async {
+    final used = _extraFields.map((e) => e.tei.code).toSet();
+    final available = kOptionalTeis.where((t) => !used.contains(t.code)).toList();
+    if (available.isEmpty) {
+      _showSnackBar('All optional fields already added.');
+      return;
+    }
+    final picked = await showModalBottomSheet<OptionalTei>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: available
+              .map((t) => ListTile(
+                    title: Text('${t.code} — ${t.label}'),
+                    onTap: () => Navigator.pop(ctx, t),
+                  ))
+              .toList(),
+        ),
+      ),
+    );
+    if (picked != null) {
+      setState(() => _extraFields.add(_ExtraField(picked)));
+    }
+  }
+
+  // Optional ATA fields section: keeps the common form simple while letting any
+  // spec TEI be added (universal). Shown after the common fields.
+  Widget _buildExtraFieldsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text('Optional ATA Fields',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('Add field'),
+              onPressed: _addExtraFieldDialog,
+            ),
+          ],
+        ),
+        for (final f in _extraFields)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: f.ctrl,
+                    maxLength: f.tei.maxLen,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      counterText: '',
+                      labelText: '${f.tei.code} — ${f.tei.label}',
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Remove',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => setState(() {
+                    f.ctrl.dispose();
+                    _extraFields.remove(f);
+                  }),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 
   @override
@@ -872,6 +1002,8 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                   ),
                   removeAction: null,
                 ),
+                const SizedBox(height: 16),
+                _buildExtraFieldsSection(),
                 const SizedBox(height: 20),
                 Row(
                   children: [

@@ -31,6 +31,11 @@ public class MemoryWriter {
     // so the USER memory always reflects how the EPC was actually built.
     private int currentUidConstruct = 2;
 
+    // Optional extra ATA TEIs (beyond the common fields) to append to the Birth
+    // Record payload on the next write. Set by writeAtaUserMemoryWithPayload.
+    // Keeps the common UI simple while allowing any spec TEI -> "universal" writing.
+    private java.util.Map<String, String> currentExtraFields = null;
+
     // Calculated permalock size from last write operation
     // This is the RECOMMENDED permalock size based on actual data written
     private int lastCalculatedPermalockWords = 0;
@@ -684,11 +689,21 @@ public class MemoryWriter {
     public boolean writeAtaUserMemoryWithPayload(
             String manufacturer, String productName, String partNumber,
             String serialNumber, String manufactureDate, String expireDate) {
+        return writeAtaUserMemoryWithPayload(manufacturer, productName, partNumber,
+                serialNumber, manufactureDate, expireDate, null);
+    }
+
+    public boolean writeAtaUserMemoryWithPayload(
+            String manufacturer, String productName, String partNumber,
+            String serialNumber, String manufactureDate, String expireDate,
+            java.util.Map<String, String> extraFields) {
 
         if (UHFManager.getInstance().getReader() == null) {
             Log.e(TAG, "mReader is null; cannot write User Memory!");
             return false;
         }
+
+        currentExtraFields = extraFields; // consumed while building the Birth payload
 
         String rt = currentRecordType != null ? currentRecordType.toUpperCase(Locale.ROOT) : "DRT";
 
@@ -702,6 +717,43 @@ public class MemoryWriter {
             return writeSingleBirthRecordTag(manufacturer, productName, partNumber,
                     serialNumber, manufactureDate, expireDate);
         }
+    }
+
+    /**
+     * Append optional extra ATA TEIs (from currentExtraFields) to a Birth payload
+     * already in "KEY VALUE*KEY VALUE" form. Each TEI is length-validated against the
+     * ATA Spec; empty or invalid entries are skipped. This is what makes writing
+     * universal (any spec TEI) without changing the common UI fields.
+     */
+    private String appendExtraTeis(String payloadText) {
+        if (currentExtraFields == null || currentExtraFields.isEmpty()) return payloadText;
+        StringBuilder sb = new StringBuilder(payloadText);
+        for (java.util.Map.Entry<String, String> e : currentExtraFields.entrySet()) {
+            String tei = e.getKey() == null ? "" : e.getKey().trim().toUpperCase(Locale.ROOT);
+            String val = e.getValue() == null ? "" : e.getValue().trim();
+            if (tei.isEmpty() || val.isEmpty()) continue;
+            String err = AtaEncodingUtils.validateTeiLength(tei, val);
+            if (err != null) {
+                Log.w(TAG, "Skipping extra TEI " + tei + ": " + err);
+                continue;
+            }
+            String upper = val.toUpperCase(Locale.ROOT);
+            // All chars must be 6-bit encodable, else encode6Bit would throw.
+            boolean encodable = true;
+            for (int i = 0; i < upper.length(); i++) {
+                if (!AtaEncodingUtils.CHAR_TO_6BIT.containsKey(upper.charAt(i))) {
+                    encodable = false;
+                    break;
+                }
+            }
+            if (!encodable) {
+                Log.w(TAG, "Skipping extra TEI " + tei + ": non-6-bit chars in value");
+                continue;
+            }
+            if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '*') sb.append('*');
+            sb.append(tei).append(' ').append(upper);
+        }
+        return sb.toString();
     }
 
     private boolean writeSingleBirthRecordTag(
@@ -739,6 +791,7 @@ public class MemoryWriter {
             String ataPayloadText = payloadBuilder.length() > 0 && payloadBuilder.charAt(0) == '*'
                     ? payloadBuilder.substring(1)
                     : payloadBuilder.toString();
+            ataPayloadText = appendExtraTeis(ataPayloadText); // optional extra ATA TEIs
 
             // Encode payload
             StringBuilder payload6bit = new StringBuilder();
@@ -862,6 +915,7 @@ public class MemoryWriter {
             String birthText = birthPayload.length() > 0 && birthPayload.charAt(0) == '*'
                     ? birthPayload.substring(1)
                     : birthPayload.toString();
+            birthText = appendExtraTeis(birthText); // optional extra ATA TEIs
 
             String birthBits = AtaEncodingUtils.encode6Bit(birthText) + "000000";
             int birthPadBits = (16 - (birthBits.length() % 16)) % 16;
