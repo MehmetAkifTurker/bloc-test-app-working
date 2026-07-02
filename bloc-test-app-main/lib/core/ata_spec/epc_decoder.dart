@@ -62,6 +62,11 @@ DecodedEpcData decodeEpc(String epcHex) {
     final filterBits = bin.substring(8, 14);
     final filterVal = int.parse(filterBits, radix: 2);
 
+    // HATA #11 FIX: Filter value must be in range 0-63 (6-bit constraint)
+    if (filterVal < 0 || filterVal > 63) {
+      throw Exception('Invalid filter value: $filterVal (must be 0-63)');
+    }
+
     int p = 14;
 
     // CAGE: 6 char * 6 bit (36 bits total)

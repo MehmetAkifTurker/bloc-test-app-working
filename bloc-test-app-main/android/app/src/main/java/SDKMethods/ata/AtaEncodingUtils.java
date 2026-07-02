@@ -280,10 +280,34 @@ public class AtaEncodingUtils {
     public static final int TEI_LLE_LEN = 1;      // Life Limited Equipment: 1 char (0 or 1)
     public static final int TEI_LOT_MIN = 1;      // Lot Number: 1-15 chars
     public static final int TEI_LOT_MAX = 15;
+    public static final int TEI_LTN_MIN = 1;      // Lot Traceability Number: 1-30 chars
+    public static final int TEI_LTN_MAX = 30;
     public static final int TEI_ACT_LEN = 3;      // Action Code: exactly 3 chars
     public static final int TEI_ACO_LEN = 5;      // Action Company CAGE: exactly 5 chars
     public static final int TEI_ACD_LEN = 8;      // Action Date: YYYYMMDD
     public static final int TEI_CND_LEN = 3;      // Condition Code: exactly 3 chars (SRV/UNS/UNK)
+
+    // HATA #5 FIX: Add missing TEI field definitions per ATA Spec 2000
+    public static final int TEI_ICC_MIN = 1;      // Item Control Code: 1-32 chars
+    public static final int TEI_ICC_MAX = 32;
+    public static final int TEI_ESD_LEN = 1;      // ESD Sensitive: exactly 1 char (0 or 1)
+    public static final int TEI_UNT_MIN = 2;      // Unit of Measure: 2-3 chars
+    public static final int TEI_UNT_MAX = 3;
+    public static final int TEI_FAB_MIN = 1;      // Fabrication/Finish Code: 1-4 chars
+    public static final int TEI_FAB_MAX = 4;
+    public static final int TEI_NSN_LEN = 13;     // NATO Stock Number: exactly 13 chars (numeric)
+    public static final int TEI_SWI_MIN = 1;      // Special Work Instructions: 1-30 chars
+    public static final int TEI_SWI_MAX = 30;
+    public static final int TEI_OMM_MIN = 1;      // OEM Maintenance Manual: 1-30 chars
+    public static final int TEI_OMM_MAX = 30;
+    public static final int TEI_FIN_MIN = 1;      // Financial Account Code: 1-20 chars
+    public static final int TEI_FIN_MAX = 20;
+    public static final int TEI_QRT_MIN = 1;      // Qualitative Rating Target: 1-4 chars
+    public static final int TEI_QRT_MAX = 4;
+    public static final int TEI_PSL_MIN = 1;      // Preparation Specification Level: 1-30 chars
+    public static final int TEI_PSL_MAX = 30;
+    public static final int TEI_ETN_MIN = 1;      // Exchange Tagged Number: 1-32 chars
+    public static final int TEI_ETN_MAX = 32;
     
     /**
      * Validate TEI field length per ATA Spec 2000
@@ -357,12 +381,66 @@ public class AtaEncodingUtils {
                 if (len != 6) return tei + " must be exactly 6 characters";
                 break;
             case "LOT":
-            case "LTN":
                 if (len < TEI_LOT_MIN || len > TEI_LOT_MAX)
                     return tei + " must be 1-15 characters";
                 break;
+            case "LTN":
+                // HATA #5 FIX: Lot Traceability Number (separate from LOT)
+                if (len < TEI_LTN_MIN || len > TEI_LTN_MAX)
+                    return tei + " must be 1-30 characters";
+                break;
             case "ACT":
                 if (len != 3) return tei + " must be exactly 3 characters";
+                break;
+
+            // HATA #5 FIX: Add missing TEI field validations per ATA Spec 2000
+            case "ICC":
+                if (len < TEI_ICC_MIN || len > TEI_ICC_MAX)
+                    return tei + " must be 1-32 characters (Item Control Code)";
+                break;
+            case "ESD":
+                if (!value.matches("^[01]$"))
+                    return "ESD must be '0' or '1' (ESD Sensitive)";
+                break;
+            case "UNT":
+                if (len < TEI_UNT_MIN || len > TEI_UNT_MAX)
+                    return tei + " must be 2-3 characters (Unit of Measure)";
+                if (!value.matches("^[A-Z]{2,3}$"))
+                    return tei + " must be uppercase alpha characters only";
+                break;
+            case "FAB":
+                if (len < TEI_FAB_MIN || len > TEI_FAB_MAX)
+                    return tei + " must be 1-4 characters (Fabrication Code)";
+                break;
+            case "NSN":
+                if (len != TEI_NSN_LEN)
+                    return tei + " must be exactly 13 numeric characters (NATO Stock Number)";
+                if (!value.matches("^\\d{13}$"))
+                    return tei + " must contain only digits";
+                break;
+            case "SWI":
+                if (len < TEI_SWI_MIN || len > TEI_SWI_MAX)
+                    return tei + " must be 1-30 characters (Special Work Instructions)";
+                break;
+            case "OMM":
+                if (len < TEI_OMM_MIN || len > TEI_OMM_MAX)
+                    return tei + " must be 1-30 characters (OEM Maintenance Manual)";
+                break;
+            case "FIN":
+                if (len < TEI_FIN_MIN || len > TEI_FIN_MAX)
+                    return tei + " must be 1-20 characters (Financial Account)";
+                break;
+            case "QRT":
+                if (len < TEI_QRT_MIN || len > TEI_QRT_MAX)
+                    return tei + " must be 1-4 characters (Qualitative Rating)";
+                break;
+            case "PSL":
+                if (len < TEI_PSL_MIN || len > TEI_PSL_MAX)
+                    return tei + " must be 1-30 characters (Preparation Spec Level)";
+                break;
+            case "ETN":
+                if (len < TEI_ETN_MIN || len > TEI_ETN_MAX)
+                    return tei + " must be 1-32 characters (Exchange Tagged Number)";
                 break;
         }
         return null;

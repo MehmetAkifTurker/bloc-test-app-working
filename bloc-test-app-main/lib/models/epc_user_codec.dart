@@ -336,8 +336,9 @@ int _recordPriority(int recordType) {
 
 /// ============== Yardımcı: ATA sınıfı adı ==============
 String ataClassLabel(int id) {
+  // HATA #18 FIX: Align with record_types.dart for consistency
   const labels = {
-    0: "All others",
+    0: "Other",
     1: "Item (general; not 8–63)",
     2: "Carton",
     6: "Pallet",
@@ -349,15 +350,15 @@ String ataClassLabel(int id) {
     13: "Aircraft Security Items",
     14: "Life Vests",
     15: "Oxygen Generators",
-    16: "Engine & Components",
+    16: "Engine & Engine Components",
     17: "Avionics",
-    18: "Flight-test Equipment",
+    18: "Experimental Equip.",
     19: "Other Emergency Equipment",
     20: "Other Rotables",
     21: "Other Repairables",
     22: "Other Cabin Interior",
-    23: "Other Repair",
-    24: "Seat & Seat Components",
+    23: "Other Repair (structural)",
+    24: "Seat & Components",
     25: "IFE & related",
     56: "Location Identifier",
     57: "Documentation",
@@ -402,6 +403,11 @@ DecodedEpcData decodeEpc(String epcHex) {
 
     final filterBits = bin.substring(8, 14);
     final filterVal = int.parse(filterBits, radix: 2);
+
+    // HATA #11 FIX: Filter value must be in range 0-63 (6-bit constraint)
+    if (filterVal < 0 || filterVal > 63) {
+      throw Exception('Invalid filter value: $filterVal (must be 0-63)');
+    }
 
     int p = 14;
 
