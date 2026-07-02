@@ -109,27 +109,24 @@ const Map<int, String> kAtaTagTypeNames = {
   0x000A: 'Single Utility Record',
 };
 
-/// ATA Spec 2000 Record Types (per Appendix A)
+/// ATA Spec 2000 Record Types (Record Descriptor, Figure 54).
+/// Only 0x00-0x04 are defined by the spec.
 const Map<int, String> kAtaRecordTypeNames = {
   0x00: 'Birth Record',
   0x01: 'Current Data Record (CDR)',
   0x02: 'User Scratchpad Record',
   0x03: 'Part History Record (PHR)',
   0x04: 'Lifecycle Record',
-  0x05: 'Supplemental Record',    // HATA #7 FIX: Added missing type
-  0x06: 'Sensor Record',           // HATA #7 FIX: Added missing type
 };
 
 /// Record priorities for field merging (lower = higher priority)
 /// Per ATA Spec: Birth Record data is authoritative for identity
 const Map<int, int> kRecordPriorities = {
   0x00: 0, // Birth Record - highest priority for identity
-  0x04: 1, // Lifecycle - DRT specific (HATA #6 FIX: Was 2, now 1)
-  0x01: 2, // CDR - latest current data (HATA #6 FIX: Was 1, now 2)
+  0x04: 1, // Lifecycle Record
+  0x01: 2, // Current Data Record
   0x03: 3, // Part History - historical
   0x02: 4, // Scratchpad - notes only
-  0x05: 5, // Supplemental Record (HATA #6 FIX: Added)
-  0x06: 6, // Sensor Record (HATA #6 FIX: Added)
 };
 
 String _hexWord(int value) =>
@@ -395,19 +392,8 @@ DecodedEpcData decodeEpc(String epcHex) {
     }
 
     final headerBits = bin.substring(0, 8);
-
-    // HATA #10 FIX: Header must be 0x3B (00111011) for ATA compliance
-    if (headerBits != '00111011') {
-      throw Exception('Invalid EPC header: expected 0x3B (00111011), got $headerBits');
-    }
-
     final filterBits = bin.substring(8, 14);
     final filterVal = int.parse(filterBits, radix: 2);
-
-    // HATA #11 FIX: Filter value must be in range 0-63 (6-bit constraint)
-    if (filterVal < 0 || filterVal > 63) {
-      throw Exception('Invalid filter value: $filterVal (must be 0-63)');
-    }
 
     int p = 14;
 
@@ -443,11 +429,6 @@ DecodedEpcData decodeEpc(String epcHex) {
       }
     }
 
-    // HATA #13 FIX: NUL terminator boundary check
-    if (p < bin.length && (p + 6 > bin.length)) {
-      throw Exception('Incomplete 6-bit sequence: ${bin.length - p} bits remaining (NUL terminator missing)');
-    }
-
     return DecodedEpcData(
       headerBits: headerBits,
       filterValue: filterVal,
@@ -456,8 +437,16 @@ DecodedEpcData decodeEpc(String epcHex) {
       serialNumber: _decodeSixBitString(snBits),
     );
   } catch (e) {
-    // HATA #15 FIX: Throw exception instead of returning fake data
-    throw FormatException('EPC decode failed: ${e.toString()}');
+    // Return a default structure for non-compliant or corrupted EPCs.
+    // Callers (e.g. the scan loop) invoke decodeEpc without try/catch, so a
+    // graceful fallback is required in dense/mixed-tag environments.
+    return DecodedEpcData(
+      headerBits: '00000000',
+      filterValue: 0,
+      cage: 'UNKNOWN',
+      partNumber: 'DECODE_ERROR',
+      serialNumber: epcHex,
+    );
   }
 }
 
@@ -636,8 +625,8 @@ Map<String, dynamic> decodeUserMemory(String hex) {
       }
       final word1 = ataWords[cursor + 1];
       final recordType = (word1 >> 8) & 0xFF;
-      // HATA #8 FIX: Valid record types: 0x00-0x06 (includes Supplemental and Sensor)
-      if (recordType > 6) {
+      // ATA Spec 2000 Record Descriptor (Figure 54): only 0x00-0x04 are valid.
+      if (recordType > 4) {
         cursor++;
         continue;
       }
@@ -727,8 +716,8 @@ AtaRecordDescriptor? _parseRecordDescriptor(
   final int recordType = (typeWord >> 8) & 0xFF;
   final int flags = typeWord & 0xFF;
 
-  // HATA #20 FIX: Record Type must be valid (0x00-0x06)
-  if (recordType > 0x06) {
+  // ATA Spec 2000 Record Descriptor (Figure 54): only 0x00-0x04 are valid.
+  if (recordType > 0x04) {
     return null;  // Invalid record type, skip this descriptor
   }
 
@@ -846,67 +835,50 @@ AtaDecodedRecord _decodeRecord(
   String payloadText;
   Map<String, String> payloadFields;
 
-  // HATA #21 FIX: Enforce encoding based on record type per ATA Spec 2000
-  // - Birth Record (0x00): MUST use 6-bit ASCII
-  // - Scratchpad (0x02): MUST use 8-bit ASCII
-  // - Others: Check eightBitEncoding flag
+  // ATA Spec 2000: encoding is signaled per-record by the Record Descriptor
+  // flag bit 0 (Figure 54): 0 = 6-bit ASCII, 1 = 8-bit ASCII. The Scratchpad
+  // Record (0x02) shall always be 8-bit ASCII (spec section 4.3).
+  final bool isScratchpad = descriptor.recordType == 0x02;
 
-  if (descriptor.recordType == 0x00) {
-    // Birth Record - MUST use 6-bit ASCII regardless of flag
-    final String sixBitText =
-        _normalizePayloadText(_decodeSixBitPayload(payloadHex).trimRight());
-    payloadText = sixBitText;
-    payloadFields = _parsePayloadFields(sixBitText);
-
-    if (descriptor.eightBitEncoding) {
-      developer.log('⚠️ WARNING: Birth Record has eightBitEncoding=true, forcing 6-bit decode');
-    }
-  } else if (descriptor.recordType == 0x02) {
-    // Scratchpad - MUST use 8-bit ASCII per ATA Spec Section 4.3
+  if (descriptor.eightBitEncoding || isScratchpad) {
     payloadText = asciiText;
     payloadFields = asciiFields;
   } else {
-    // Other record types: Check eightBitEncoding flag
-    if (descriptor.eightBitEncoding) {
+    final String sixBitText =
+        _normalizePayloadText(_decodeSixBitPayload(payloadHex).trimRight());
+    final Map<String, String> sixBitFields = _parsePayloadFields(sixBitText);
+
+    if (isLifecycle) {
+      developer.log('🔍 LIFECYCLE 6BIT: $sixBitText');
+      developer.log('🔍 LIFECYCLE 6BIT Fields: $sixBitFields');
+    }
+
+    bool useAscii = false;
+    if (asciiFields.isNotEmpty && sixBitFields.isEmpty) {
+      useAscii = true;
+    } else if (asciiFields.length > sixBitFields.length) {
+      useAscii = true;
+    } else {
+      const criticalTeis = ['PNR', 'PNO', 'DMF', 'MFR', 'SER', 'PDT', 'ACT', 'ACO', 'ACD', 'CND'];
+      for (final key in criticalTeis) {
+        if (asciiFields.containsKey(key) && !sixBitFields.containsKey(key)) {
+          useAscii = true;
+          break;
+        }
+      }
+    }
+
+    if (useAscii) {
       payloadText = asciiText;
       payloadFields = asciiFields;
     } else {
-      final String sixBitText =
-          _normalizePayloadText(_decodeSixBitPayload(payloadHex).trimRight());
-      final Map<String, String> sixBitFields = _parsePayloadFields(sixBitText);
+      payloadText = sixBitText;
+      payloadFields = sixBitFields;
+    }
 
-      if (isLifecycle) {
-        developer.log('🔍 LIFECYCLE 6BIT: $sixBitText');
-        developer.log('🔍 LIFECYCLE 6BIT Fields: $sixBitFields');
-      }
-
-      bool useAscii = false;
-      if (asciiFields.isNotEmpty && sixBitFields.isEmpty) {
-        useAscii = true;
-      } else if (asciiFields.length > sixBitFields.length) {
-        useAscii = true;
-      } else {
-        const criticalTeis = ['PNR', 'PNO', 'DMF', 'MFR', 'SER', 'PDT', 'ACT', 'ACO', 'ACD', 'CND'];
-        for (final key in criticalTeis) {
-          if (asciiFields.containsKey(key) && !sixBitFields.containsKey(key)) {
-            useAscii = true;
-            break;
-          }
-        }
-      }
-
-      if (useAscii) {
-        payloadText = asciiText;
-        payloadFields = asciiFields;
-      } else {
-        payloadText = sixBitText;
-        payloadFields = sixBitFields;
-      }
-
-      if (isLifecycle) {
-        developer
-            .log('🔍 LIFECYCLE FINAL: useAscii=$useAscii, fields=$payloadFields');
-      }
+    if (isLifecycle) {
+      developer
+          .log('🔍 LIFECYCLE FINAL: useAscii=$useAscii, fields=$payloadFields');
     }
   }
 
