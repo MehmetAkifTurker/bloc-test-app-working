@@ -26,6 +26,18 @@ public class MemoryWriter {
     // ATA Spec A-4-2: USER ToC "ATA Classification" field shall be 0x01 (flyable parts).
     // NOTE: this is NOT the EPC Filter Value (that lives in the EPC bank, separately).
     private static final int ATA_CLASSIFICATION = 0x01;
+    // ATA Spec Table 17 (Version Control): ToC Major=4 (0b0100), Minor=2 (0b010).
+    private static final int TOC_MAJOR_VERSION = 0x4;
+    private static final int TOC_MINOR_VERSION = 0x2;
+    // ATA Spec Table 17 + Figure 56: a Data Record header's low byte is
+    // DR Version(3 bits)=1 | BD Version(5 bits)=3  ->  (1<<5)|3 = 0x23.
+    // (This byte is NOT record flags; the 6/8-bit encoding flag lives in the
+    // Record Descriptor, not the Data Record header.)
+    private static final int DR_BD_VERSION = (0x1 << 5) | 0x03; // 0x23
+    // ATA Spec A-4-3: Size of RDs field code — 0x02 = full ToC with 16-bit
+    // record addresses (2-word RDs). This is NOT the number of records (that
+    // lives in the ToC Trailer). We always use 16-bit record addresses.
+    private static final int RD_SIZE_CODE_16BIT = 0x02;
     // UID Construct used when programming the EPC (1 = SER only, 2 = PartNumber + SER).
     // Set by programConstruct1Epc / programConstruct2Epc; written into the Birth Record UIC field
     // so the USER memory always reflects how the EPC was actually built.
@@ -814,7 +826,8 @@ public class MemoryWriter {
             // Word 1: [15:13]=MinorVer, [12:9]=MajorVer, [8:5]=TagType, [4:0]=Class
             // TagType per ATA Spec 2000: SRT-B=0x2, SRT-U=0xA
             String w0 = String.format("%04X", dsfid);
-            int word1 = ((0 & 0x7) << 13) | ((4 & 0xF) << 9) | ((tagType & 0xF) << 5) | (ATA_CLASSIFICATION & 0x1F);
+            int word1 = ((TOC_MINOR_VERSION & 0x7) << 13) | ((TOC_MAJOR_VERSION & 0xF) << 9)
+                    | ((tagType & 0xF) << 5) | (ATA_CLASSIFICATION & 0x1F);
             String w1 = String.format("%04X", word1);
             // RDCount=0 for SRT (no Record Descriptors)
             int word2 = ((0x08 & 0xFF) << 8) | ((4 & 0xF) << 4) | (0 & 0xF);
@@ -942,8 +955,8 @@ public class MemoryWriter {
 
             int birthRecordSize = 2 + birthPayloadWords + 1;
             // Record Header Word 1: Bits[15:8]=RecordType(0x00=Birth),
-            // Bits[7:0]=Flags(0x00=6-bit encoding)
-            String birthHeader = String.format("%04X%04X", birthRecordSize, (0x00 << 8) | 0x00);
+            // Bits[7:5]=DR Version(1), Bits[4:0]=BD Version(3) => 0x23 (ATA Table 17)
+            String birthHeader = String.format("%04X%04X", birthRecordSize, (0x00 << 8) | DR_BD_VERSION);
             String birthDataNoCrc = birthHeader + birthPayloadHex;
             String birthRecordHex = birthDataNoCrc + String.format("%04X",
                     AtaEncodingUtils.calculateCrc16Ccitt(birthDataNoCrc));
@@ -976,8 +989,8 @@ public class MemoryWriter {
                     + " chars capacity)");
 
             // Record Header Word 1: Bits[15:8]=RecordType(0x04=Lifecycle),
-            // Bits[7:0]=Flags(0x00=6-bit encoding)
-            String lifecycleHeader = String.format("%04X%04X", lifecycleRecordSize, (0x04 << 8) | 0x00);
+            // Bits[7:5]=DR Version(1), Bits[4:0]=BD Version(3) => 0x23 (ATA Table 17)
+            String lifecycleHeader = String.format("%04X%04X", lifecycleRecordSize, (0x04 << 8) | DR_BD_VERSION);
 
             StringBuilder lifecyclePayloadHex = new StringBuilder();
             for (int i = 0; i < lifecyclePayloadWords * 4; i++)
@@ -995,17 +1008,17 @@ public class MemoryWriter {
             // Word 0: DSFID (0x1E = ATA Spec 2000 compliant)
             // Word 1: [15:13]=MinorVer, [12:9]=MajorVer, [8:5]=TagType, [4:0]=Class
             // TagType per ATA Spec 2000: DRT=0x1
-            // Word 2: [15:8]=Flags, [7:4]=ToCWords, [3:0]=RDCount (number of RDs, not
-            // words!)
-            // Word 3: ATA Memory Words = CHIP CAPACITY (not data size!)
+            // Word 2: [15:8]=Flags, [7:4]=Size of ToC Header, [3:0]=Size of RDs code
+            // (0x02 = 16-bit record addresses; number of records lives in the Trailer)
             String w0 = String.format("%04X", 0x1E00);
             int tagType = AtaEncodingUtils.mapAtaTagType("DRT"); // 0x1 per ATA Spec
-            int word1 = ((0 & 0x7) << 13) | ((4 & 0xF) << 9) | ((tagType & 0xF) << 5) | (ATA_CLASSIFICATION & 0x1F);
+            int word1 = ((TOC_MINOR_VERSION & 0x7) << 13) | ((TOC_MAJOR_VERSION & 0xF) << 9)
+                    | ((tagType & 0xF) << 5) | (ATA_CLASSIFICATION & 0x1F);
             String w1 = String.format("%04X", word1);
             Log.d(TAG, "📝 DRT ToC: TagType=" + tagType + " (0x" + Integer.toHexString(tagType) +
                     "), Class=" + ATA_CLASSIFICATION);
-            // RDCount=2 (2 Record Descriptors: Lifecycle + Birth)
-            int word2 = ((0x08 & 0xFF) << 8) | ((4 & 0xF) << 4) | (2 & 0xF);
+            // Size of RDs = 0x02 (16-bit record addresses, 2-word RDs)
+            int word2 = ((0x08 & 0xFF) << 8) | ((4 & 0xF) << 4) | (RD_SIZE_CODE_16BIT & 0xF);
             String w2 = String.format("%04X", word2);
             // ATA Spec A-4-3: Word 3 = "Size of ATA Memory" = size of the ATA container,
             // ending at the ToC Trailer's CRC word. Use the actual container size so the
@@ -1209,17 +1222,23 @@ public class MemoryWriter {
             // Word 1: [ToC Minor:3][ToC Major:4][ATA Tag Type:4][ATA Class:5]
             // TagType per ATA Spec 2000: MRT=0x0
             int tagType = AtaEncodingUtils.mapAtaTagType("MRT"); // 0x0 per ATA Spec
-            int word1 = ((0 & 0x7) << 13) | ((4 & 0xF) << 9) | ((tagType & 0xF) << 5) | (ATA_CLASSIFICATION & 0x1F);
+            int word1 = ((TOC_MINOR_VERSION & 0x7) << 13) | ((TOC_MAJOR_VERSION & 0xF) << 9)
+                    | ((tagType & 0xF) << 5) | (ATA_CLASSIFICATION & 0x1F);
             String w1 = String.format("%04X", word1);
             Log.d(TAG, "📝 MRT ToC: Class=" + ATA_CLASSIFICATION + " (ATA Spec: fixed 0x01)");
-            // Word 2: [Flags:8][Size of ToC Header:4][RDCount:4] (RDCount=2 for CDR +
-            // Birth)
-            int word2 = ((0x08 & 0xFF) << 8) | ((4 & 0xF) << 4) | (2 & 0xF);
+            // Word 2: [Flags:8][Size of ToC Header:4][Size of RDs code:4]
+            // (0x02 = 16-bit record addresses; record count lives in the Trailer)
+            int word2 = ((0x08 & 0xFF) << 8) | ((4 & 0xF) << 4) | (RD_SIZE_CODE_16BIT & 0xF);
             String w2 = String.format("%04X", word2);
-            // CRITICAL: Word 3 = CHIP'S USER MEMORY CAPACITY, not data written!
-            int ataMemWords = currentUserWords > 0 ? currentUserWords : totalWords;
+            // ATA Spec A-4-3: Word 3 = "Size of ATA Memory" = size of the ATA container,
+            // whose LAST word is the ToC Trailer CRC and penultimate word is the record
+            // count (spec: trailer stored at the end of ATA memory). Must be the container
+            // size (totalWords), NOT the chip capacity — otherwise the reader looks for the
+            // trailer at chipCapacity-2/-1 and reads unwritten memory. Matches DRT/SRT.
+            int ataMemWords = totalWords;
             String w3 = String.format("%04X", ataMemWords);
-            Log.d(TAG, "📝 MRT: ATA Memory Words: " + ataMemWords + " (chip), Data: " + totalWords);
+            Log.d(TAG, "📝 MRT: ATA Memory (container): " + ataMemWords + " words; chip capacity: "
+                    + currentUserWords);
 
             // Build Record Descriptors (CDR first, then Birth - per ATA Spec ordering)
             // RD Flags: Bit 0 = 8-bit encoding, Bit 1 = Corrected birth
@@ -1228,16 +1247,16 @@ public class MemoryWriter {
 
             // Build Birth Record with header and CRC
             // Record Header Word 1: Bits[15:8]=RecordType(0x00=Birth),
-            // Bits[7:0]=Flags(0x00=6-bit encoding)
-            String birthHeader = String.format("%04X%04X", birthRecordSize, (0x00 << 8) | 0x00);
+            // Bits[7:5]=DR Version(1), Bits[4:0]=BD Version(3) => 0x23 (ATA Table 17)
+            String birthHeader = String.format("%04X%04X", birthRecordSize, (0x00 << 8) | DR_BD_VERSION);
             String birthDataNoCrc = birthHeader + birthPayloadHex;
             String birthRecordHex = birthDataNoCrc + String.format("%04X",
                     AtaEncodingUtils.calculateCrc16Ccitt(birthDataNoCrc));
 
             // Build CDR with header and CRC
             // Record Header Word 1: Bits[15:8]=RecordType(0x01=CDR),
-            // Bits[7:0]=Flags(0x00=6-bit encoding)
-            String cdrHeader = String.format("%04X%04X", cdrRecordSize, (0x01 << 8) | 0x00);
+            // Bits[7:5]=DR Version(1), Bits[4:0]=BD Version(3) => 0x23 (ATA Table 17)
+            String cdrHeader = String.format("%04X%04X", cdrRecordSize, (0x01 << 8) | DR_BD_VERSION);
             String cdrDataNoCrc = cdrHeader + cdrPayloadHex;
             String cdrRecordHex = cdrDataNoCrc + String.format("%04X",
                     AtaEncodingUtils.calculateCrc16Ccitt(cdrDataNoCrc));
@@ -1472,8 +1491,8 @@ public class MemoryWriter {
             String cdrPayloadHex = AtaEncodingUtils.bitsToHex(cdrBits);
 
             // Record Header Word 1: Bits[15:8]=RecordType(0x01=CDR),
-            // Bits[7:0]=Flags(0x00=6-bit encoding)
-            String cdrHeader = String.format("%04X%04X", cdrRecordSize, (0x01 << 8) | 0x00);
+            // Bits[7:5]=DR Version(1), Bits[4:0]=BD Version(3) => 0x23 (ATA Table 17)
+            String cdrHeader = String.format("%04X%04X", cdrRecordSize, (0x01 << 8) | DR_BD_VERSION);
             String cdrDataNoCrc = cdrHeader + cdrPayloadHex;
             String newCdrRecordHex = cdrDataNoCrc +
                     String.format("%04X", AtaEncodingUtils.calculateCrc16Ccitt(cdrDataNoCrc));
@@ -1635,8 +1654,8 @@ public class MemoryWriter {
             String lifecyclePayloadHex = AtaEncodingUtils.bitsToHex(lifecycleBits);
 
             // Record Header Word 1: Bits[15:8]=RecordType(0x04=Lifecycle),
-            // Bits[7:0]=Flags(0x00=6-bit encoding)
-            String lifecycleHeader = String.format("%04X%04X", lifecycleRecordSize, (0x04 << 8) | 0x00);
+            // Bits[7:5]=DR Version(1), Bits[4:0]=BD Version(3) => 0x23 (ATA Table 17)
+            String lifecycleHeader = String.format("%04X%04X", lifecycleRecordSize, (0x04 << 8) | DR_BD_VERSION);
             String lifecycleDataNoCrc = lifecycleHeader + lifecyclePayloadHex;
             String newLifecycleRecordHex = lifecycleDataNoCrc +
                     String.format("%04X", AtaEncodingUtils.calculateCrc16Ccitt(lifecycleDataNoCrc));
