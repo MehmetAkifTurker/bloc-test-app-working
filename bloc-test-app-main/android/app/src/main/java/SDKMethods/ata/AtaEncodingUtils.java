@@ -378,8 +378,8 @@ public class AtaEncodingUtils {
         List<String> chunks = splitIntoChunks(binaryStr, 8);
         StringBuilder sb = new StringBuilder();
         for (String bin : chunks) {
-            // Pad to 8 bits if needed
-            while (bin.length() < 8) bin = bin + "0";
+            // Pad to 8 bits if needed (LSBs stay zero for a partial trailing chunk)
+            if (bin.length() < 8) bin = bin + "0".repeat(8 - bin.length());
             int decimal = Integer.parseInt(bin, 2);
             sb.append(String.format("%02X", decimal));
         }
@@ -394,7 +394,7 @@ public class AtaEncodingUtils {
         for (int i = 0; i < bits.length(); i += 4) {
             int end = Math.min(bits.length(), i + 4);
             String nibble = bits.substring(i, end);
-            while (nibble.length() < 4) nibble = nibble + "0";
+            if (nibble.length() < 4) nibble = nibble + "0".repeat(4 - nibble.length());
             hex.append(Integer.toHexString(Integer.parseInt(nibble, 2)).toUpperCase());
         }
         return hex.toString();

@@ -930,10 +930,8 @@ public class MemoryWriter {
                     : birthPayload.toString();
             birthText = appendExtraTeis(birthText); // optional extra ATA TEIs
 
-            String birthBits = AtaEncodingUtils.encode6Bit(birthText) + "000000";
-            int birthPadBits = (16 - (birthBits.length() % 16)) % 16;
-            for (int i = 0; i < birthPadBits; i++)
-                birthBits += '0';
+            String birthBits = AtaEncodingUtils.padToMultiple(
+                    AtaEncodingUtils.encode6Bit(birthText) + "000000", 16);
             String birthPayloadHex = AtaEncodingUtils.bitsToHex(birthBits);
             int birthPayloadWords = birthBits.length() / 16;
 
@@ -946,8 +944,7 @@ public class MemoryWriter {
             int lifecycleStartUnpadded = birthAddr + (2 + birthPayloadWords + 1);
             int alignPad = (16 - (lifecycleStartUnpadded % 16)) % 16;
             if (alignPad > 0) {
-                for (int i = 0; i < alignPad * 4; i++)
-                    birthPayloadHex += "0";
+                birthPayloadHex += "0".repeat(alignPad * 4);
                 birthPayloadWords += alignPad;
                 Log.d(TAG, "📝 Birth padded " + alignPad + " words so Lifecycle is block-aligned at word "
                         + (birthAddr + 2 + birthPayloadWords + 1));
@@ -1162,10 +1159,8 @@ public class MemoryWriter {
                         .append("*");
 
             String birthText = birthPayload.toString();
-            String birthBits = AtaEncodingUtils.encode6Bit(birthText) + "000000";
-            int birthPadBits = (16 - (birthBits.length() % 16)) % 16;
-            for (int i = 0; i < birthPadBits; i++)
-                birthBits += '0';
+            String birthBits = AtaEncodingUtils.padToMultiple(
+                    AtaEncodingUtils.encode6Bit(birthText) + "000000", 16);
             String birthPayloadHex = AtaEncodingUtils.bitsToHex(birthBits);
             int birthPayloadWords = birthBits.length() / 16;
 
@@ -1176,8 +1171,7 @@ public class MemoryWriter {
             int minBirthPayloadWords = 5; // 2 + 5 + 1 = 8 words minimum
             if (birthPayloadWords < minBirthPayloadWords) {
                 int padWords = minBirthPayloadWords - birthPayloadWords;
-                for (int i = 0; i < padWords * 4; i++)
-                    birthPayloadHex += "0";
+                birthPayloadHex += "0".repeat(padWords * 4);
                 birthPayloadWords = minBirthPayloadWords;
                 Log.d(TAG, "📝 MRT Birth Record padded to " + birthPayloadWords + " payload words (CDR alignment)");
             }
@@ -1196,10 +1190,8 @@ public class MemoryWriter {
             cdrPayload.append("CND SRV*"); // Condition: Serviceable
 
             String cdrText = cdrPayload.toString();
-            String cdrBits = AtaEncodingUtils.encode6Bit(cdrText) + "000000";
-            int cdrPadBits = (16 - (cdrBits.length() % 16)) % 16;
-            for (int i = 0; i < cdrPadBits; i++)
-                cdrBits += '0';
+            String cdrBits = AtaEncodingUtils.padToMultiple(
+                    AtaEncodingUtils.encode6Bit(cdrText) + "000000", 16);
             String cdrPayloadHex = AtaEncodingUtils.bitsToHex(cdrBits);
             int cdrPayloadWords = cdrBits.length() / 16;
             int cdrRecordSize = 2 + cdrPayloadWords + 1;
@@ -1480,13 +1472,11 @@ public class MemoryWriter {
 
             int payloadWords = cdrRecordSize - 3;
             int requiredBits = payloadWords * 16;
-            while (cdrBits.length() < requiredBits)
-                cdrBits += '0';
-
             if (cdrBits.length() > requiredBits) {
                 Log.e(TAG, "❌ CDR Payload too large!");
                 return false;
             }
+            cdrBits += "0".repeat(requiredBits - cdrBits.length());
 
             String cdrPayloadHex = AtaEncodingUtils.bitsToHex(cdrBits);
 
@@ -1643,13 +1633,11 @@ public class MemoryWriter {
 
             int payloadWords = lifecycleRecordSize - 3;
             int requiredBits = payloadWords * 16;
-            while (lifecycleBits.length() < requiredBits)
-                lifecycleBits += '0';
-
             if (lifecycleBits.length() > requiredBits) {
                 Log.e(TAG, "❌ Payload too large!");
                 return false;
             }
+            lifecycleBits += "0".repeat(requiredBits - lifecycleBits.length());
 
             String lifecyclePayloadHex = AtaEncodingUtils.bitsToHex(lifecycleBits);
 

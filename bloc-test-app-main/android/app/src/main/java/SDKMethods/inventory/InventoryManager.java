@@ -358,18 +358,11 @@ public class InventoryManager {
     }
 
     private String normalizeTid(String tid) {
-        // CRITICAL: Don't do additional TID reads here!
-        // readData without filter can read TID from ANY tag in range,
-        // causing EPC/TID mismatch in multi-tag environment.
-        // 
-        // Just use whatever TID came from inventorySingleTag().
-        // The SDK's inventorySingleTag returns EPC+TID+USER together,
-        // which should be from the same tag (mostly).
-        
-        if (tid != null && isTidValid(tid)) {
-            return tid;
-        }
-        return tid; // Return as-is, even if invalid - let caller decide
+        // Use whatever TID came from inventorySingleTag() as-is (EPC+TID+USER come
+        // from the same tag). We deliberately do NOT do an extra unfiltered TID read
+        // here: that could read a different tag's TID in a multi-tag environment.
+        // Validity is left for the caller to decide.
+        return tid;
     }
 
     // ==================== TAG THREAD ====================

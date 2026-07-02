@@ -90,7 +90,7 @@ public class MemoryReader {
             StringBuilder fullHex = new StringBuilder();
 
             // First chunk with retry
-            String firstChunk = readChunkWithRetry(reader, epcHex, epcBits, 0, true);
+            String firstChunk = readChunkWithRetry(reader, epcHex, epcBits, 0, CHUNK_SIZE, true);
             if (firstChunk == null || firstChunk.length() < 16) {
                 Log.w(TAG, "First chunk failed");
                 return "";
@@ -104,7 +104,9 @@ public class MemoryReader {
             int offset = CHUNK_SIZE;
             while (offset < targetWords) {
                 int wordsToRead = Math.min(CHUNK_SIZE, targetWords - offset);
-                String chunkHex = readChunkWithRetry(reader, epcHex, epcBits, offset, false);
+                // Read exactly the remaining words so the final chunk never over-reads past
+                // the tag's ATA memory (which triggers a Gen2 memory-overrun and truncation).
+                String chunkHex = readChunkWithRetry(reader, epcHex, epcBits, offset, wordsToRead, false);
 
                 if (chunkHex == null || chunkHex.isEmpty()) {
                     Log.d(TAG, "Chunk at offset " + offset + " failed");
@@ -113,7 +115,7 @@ public class MemoryReader {
 
                 fullHex.append(chunkHex);
                 Thread.sleep(15); // Reduced from 40ms
-                offset += CHUNK_SIZE;
+                offset += wordsToRead;
             }
 
             String result = fullHex.toString();
@@ -536,12 +538,13 @@ public class MemoryReader {
 
     // ==================== PRIVATE HELPERS ====================
 
-    private String readChunkWithRetry(RFIDWithUHFUART reader, String epcHex, int epcBits, int offset, boolean isFirst) {
+    private String readChunkWithRetry(RFIDWithUHFUART reader, String epcHex, int epcBits, int offset,
+            int wordCount, boolean isFirst) {
         for (int retry = 0; retry < MAX_RETRIES; retry++) {
             try {
                 String chunk = reader.readData("00000000",
                         RFIDWithUHFUART.Bank_EPC, 32, epcBits, epcHex,
-                        RFIDWithUHFUART.Bank_USER, offset, CHUNK_SIZE);
+                        RFIDWithUHFUART.Bank_USER, offset, wordCount);
 
                 if (chunk != null && (isFirst ? chunk.length() >= 16 : !chunk.isEmpty())) {
                     return chunk;
