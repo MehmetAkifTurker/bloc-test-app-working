@@ -58,8 +58,11 @@ public class AtaEncodingUtils {
         CHAR_TO_6BIT.put('=', "111101");
         CHAR_TO_6BIT.put('>', "111110");
         CHAR_TO_6BIT.put('?', "111111");
-        
-        // Uppercase letters (ASCII 65-90 -> 6-bit 000001-011010)
+
+        // Special character @ (ASCII 64 -> 6-bit 000000)
+        CHAR_TO_6BIT.put('@', "000000");  // ATA Spec 2000 Appendix B
+
+        // Uppercase letters (ASCII 64-90 -> 6-bit 000000-011010)
         CHAR_TO_6BIT.put('A', "000001");
         CHAR_TO_6BIT.put('B', "000010");
         CHAR_TO_6BIT.put('C', "000011");
@@ -290,25 +293,31 @@ public class AtaEncodingUtils {
      */
     public static String validateTeiLength(String tei, String value) {
         if (value == null || value.isEmpty()) return null; // Optional fields can be empty
-        
+
         int len = value.length();
-        switch (tei.toUpperCase(Locale.ROOT)) {
+        String teiUpper = tei.toUpperCase(Locale.ROOT);
+
+        switch (teiUpper) {
             case "MFR":
             case "CAG":
             case "SPL":
             case "ACO":
                 if (len != 5) return tei + " must be exactly 5 characters";
+                // HATA #3 FIX: CAGE code must be uppercase alphanumeric
+                if (!value.matches("^[0-9A-Z]{5}$")) {
+                    return tei + " must be 5 uppercase alphanumeric characters (0-9, A-Z)";
+                }
                 break;
             case "SER":
             case "SEQ":
-                if (len < TEI_SER_MIN || len > TEI_SER_MAX) 
+                if (len < TEI_SER_MIN || len > TEI_SER_MAX)
                     return tei + " must be 1-30 characters";
                 break;
             case "PNR":
             case "PNO":
             case "PDT":
             case "TDN":
-                if (len < TEI_PNR_MIN || len > TEI_PNR_MAX) 
+                if (len < TEI_PNR_MIN || len > TEI_PNR_MAX)
                     return tei + " must be 1-32 characters";
                 break;
             case "DMF":
@@ -316,14 +325,32 @@ public class AtaEncodingUtils {
             case "OVD":
             case "DOH":
             case "ACD":
+                // HATA #2 FIX: Date format YYYYMMDD with range validation
                 if (len != 8) return tei + " must be YYYYMMDD (8 characters)";
+                if (!value.matches("^\\d{4}(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])$")) {
+                    return tei + " must be valid date in YYYYMMDD format (MM: 01-12, DD: 01-31)";
+                }
                 break;
             case "UIC":
+                // HATA #4 FIX: UIC must be exactly "1" or "2"
+                if (!value.matches("^[12]$")) {
+                    return "UIC must be '1' or '2' (UID construct type)";
+                }
+                break;
             case "LLE":
-                if (len != 1) return tei + " must be exactly 1 character";
+                // HATA #4 FIX: LLE must be exactly "0" or "1"
+                if (!value.matches("^[01]$")) {
+                    return "LLE must be '0' or '1' (Life Limited Equipment)";
+                }
+                break;
+            case "CND":
+                // HATA #4 FIX: CND must be "SRV", "UNS", or "UNK"
+                if (!value.matches("^(SRV|UNS|UNK)$")) {
+                    return "CND must be 'SRV', 'UNS', or 'UNK' (Condition Code)";
+                }
                 break;
             case "PML":
-                if (len < TEI_PML_MIN || len > TEI_PML_MAX) 
+                if (len < TEI_PML_MIN || len > TEI_PML_MAX)
                     return tei + " must be 1-100 characters";
                 break;
             case "HAZ":
@@ -331,11 +358,10 @@ public class AtaEncodingUtils {
                 break;
             case "LOT":
             case "LTN":
-                if (len < TEI_LOT_MIN || len > TEI_LOT_MAX) 
+                if (len < TEI_LOT_MIN || len > TEI_LOT_MAX)
                     return tei + " must be 1-15 characters";
                 break;
             case "ACT":
-            case "CND":
                 if (len != 3) return tei + " must be exactly 3 characters";
                 break;
         }

@@ -53,6 +53,12 @@ DecodedEpcData decodeEpc(String epcHex) {
     }
 
     final headerBits = bin.substring(0, 8);
+
+    // HATA #9 FIX: Header must be 0x3B (00111011) for ATA compliance
+    if (headerBits != '00111011') {
+      throw Exception('Invalid EPC header: expected 0x3B (00111011), got $headerBits');
+    }
+
     final filterBits = bin.substring(8, 14);
     final filterVal = int.parse(filterBits, radix: 2);
 
@@ -90,6 +96,11 @@ DecodedEpcData decodeEpc(String epcHex) {
       }
     }
 
+    // HATA #12 FIX: NUL terminator boundary check
+    if (p < bin.length && (p + 6 > bin.length)) {
+      throw Exception('Incomplete 6-bit sequence: ${bin.length - p} bits remaining (NUL terminator missing)');
+    }
+
     return DecodedEpcData(
       headerBits: headerBits,
       filterValue: filterVal,
@@ -98,14 +109,8 @@ DecodedEpcData decodeEpc(String epcHex) {
       serialNumber: decode6BitString(snBits),
     );
   } catch (e) {
-    // Return a default structure for non-compliant or corrupted EPCs
-    return DecodedEpcData(
-      headerBits: '00000000',
-      filterValue: 0,
-      cage: 'UNKNOWN',
-      partNumber: 'DECODE_ERROR',
-      serialNumber: epcHex, // Show raw EPC for debugging
-    );
+    // HATA #14 FIX: Throw exception instead of returning fake data
+    throw FormatException('EPC decode failed: ${e.toString()}');
   }
 }
 
