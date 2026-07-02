@@ -10,15 +10,14 @@ abstract class AtaTagType {
   static const int singleUtility = 0x000A;
 }
 
-/// ATA Record Type IDs
+/// ATA Record Type IDs (per ATA Spec 2000 Record Descriptor, Figure 54:
+/// only 0x00-0x04 are defined by the spec).
 abstract class AtaRecordType {
   static const int birth = 0x00;
   static const int currentData = 0x01;
   static const int scratchpad = 0x02;
   static const int partHistory = 0x03;
   static const int lifecycle = 0x04;
-  static const int supplemental = 0x05;
-  static const int sensor = 0x06;
 }
 
 /// ATA Tag Type Names
@@ -36,8 +35,6 @@ const Map<int, String> kAtaRecordTypeNames = {
   AtaRecordType.scratchpad: 'Scratchpad',
   AtaRecordType.partHistory: 'Part History Record',
   AtaRecordType.lifecycle: 'Lifecycle Record',
-  AtaRecordType.supplemental: 'Supplemental Record',
-  AtaRecordType.sensor: 'Sensor Record',
 };
 
 /// ATA Equipment Class Names
@@ -71,7 +68,10 @@ const Map<int, String> kAtaClassNames = {
   60: 'Other Non-Flyable Equipment',
 };
 
-/// TEI Header IDs (per ATA Spec 2000)
+/// NOTE: ATA Spec 2000 USER memory is self-describing via ASCII TEI mnemonics
+/// ("MFR value*PNR value*...") delimited by '*'. There is NO binary TEI-header-ID
+/// scheme in the spec; the map below is informational only and is not used to
+/// decode tag memory.
 const Map<int, String> kTeiHeaderIds = {
   0x00: 'MFR', 0x01: 'CAG', 0x02: 'SPL', 0x03: 'SER',
   0x04: 'SEQ', 0x05: 'UCN', 0x10: 'PNR', 0x11: 'PNO',
@@ -83,7 +83,7 @@ const Map<int, String> kTeiHeaderIds = {
   0x62: 'OVD', 0x63: 'OMM', 0x64: 'PML',
 };
 
-/// TEI Field Labels - Human readable names
+/// TEI Field Labels - Human readable names (per ATA Spec 2000 Ch.9 CSDD/Table 3)
 const Map<String, String> kTeiFieldLabels = {
   'MFR': 'Manufacturer',
   'CAG': 'CAGE Code',
@@ -91,31 +91,31 @@ const Map<String, String> kTeiFieldLabels = {
   'SER': 'Serial Number',
   'SEQ': 'Serial Sequence',
   'UCN': 'Unique Component Number',
-  'PNR': 'Part Number (Replacement)',
+  'PNR': 'Part Number (Current)',
   'PNO': 'Part Number (Original)',
-  'UIC': 'Unique Item Code',
+  'UIC': 'UID Construct Number',
   'DMF': 'Date of Manufacture',
   'EXP': 'Expiration Date',
-  'PDT': 'Production Date',
-  'ESD': 'Effective Service Date',
-  'LLE': 'Limited Life Expires',
-  'ICC': 'Item Class Code',
+  'PDT': 'Part Description',
+  'ESD': 'ESD Sensitive Indicator',
+  'LLE': 'Life Limited Equipment Indicator',
+  'ICC': 'International Commodity Code',
   'LOT': 'Lot/Batch Number',
-  'LTN': 'Lot Traceability Number',
+  'LTN': 'Enterprise Lot Number',
   'CNT': 'Count/Quantity',
   'WGT': 'Weight',
   'UNT': 'Unit of Measure',
   'HAZ': 'Hazardous Material',
   'ECC': 'Equipment Condition',
-  'SWI': 'Software ID',
-  'TDN': 'Tag Data Number',
+  'SWI': 'Software Indicator',
+  'TDN': 'Certificate Tracking Number',
   'NSN': 'NATO Stock Number',
-  'FAB': 'Fabrication',
-  'DOH': 'Date of Overhaul',
-  'DNH': 'Date Next Overhaul',
+  'FAB': 'Fabricator (CAGE)',
+  'DOH': 'Last Hydrostatic Test Date',
+  'DNH': 'Next Hydrostatic Test Date',
   'OVD': 'Overhaul Date',
-  'OMM': 'OEM Maintenance Manual',
-  'PML': 'Prime Mfr Life Limit',
+  'OMM': 'OEM Code (CAGE)',
+  'PML': 'Part Modification Level',
 };
 
 /// Standard TEI field order for display
@@ -127,9 +127,10 @@ const List<String> kTeiFieldOrder = [
   'NSN', 'FAB', 'DOH', 'DNH', 'OVD', 'OMM', 'PML',
 ];
 
-/// Date fields for formatting
+/// Date fields for formatting (YYYYMMDD TEIs per ATA Spec 2000 Table 3).
+/// PDT (Part Description), ESD/LLE (indicators) are NOT dates.
 const Set<String> kDateFields = {
-  'DMF', 'EXP', 'PDT', 'ESD', 'LLE', 'DOH', 'DNH', 'OVD'
+  'DMF', 'EXP', 'OVD', 'DOH', 'DNH'
 };
 
 /// Get ATA class label by ID

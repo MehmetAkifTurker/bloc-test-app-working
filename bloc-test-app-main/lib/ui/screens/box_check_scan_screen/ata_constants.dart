@@ -42,12 +42,14 @@ const Map<int, String> kAtaTagTypeNames = {
   0x000A: 'Single Utility Record',
 };
 
-/// ATA Record Type Names
+/// ATA Record Type Names (per ATA Spec 2000 Record Descriptor, Figure 54:
+/// only 0x00-0x04 are defined by the spec).
 const Map<int, String> kAtaRecordTypeNames = {
   0x00: 'Birth Record',
+  0x01: 'Current Data Record (CDR)',
+  0x02: 'User Scratchpad Record',
+  0x03: 'Part History Record (PHR)',
   0x04: 'Lifecycle Record',
-  0x05: 'Supplemental Record',
-  0x06: 'Sensor Record',
 };
 
 /// Standard TEI field order for display
@@ -59,7 +61,7 @@ const List<String> kAtaUserFieldOrder = [
   'NSN', 'FAB', 'DOH', 'DNH', 'OVD', 'OMM',
 ];
 
-/// TEI Field Labels - Human readable names
+/// TEI Field Labels - Human readable names (per ATA Spec 2000 Ch.9 CSDD/Table 3)
 const Map<String, String> kAtaUserFieldLabels = {
   'MFR': 'Manufacturer',
   'CAG': 'CAGE Code',
@@ -67,31 +69,31 @@ const Map<String, String> kAtaUserFieldLabels = {
   'SER': 'Serial Number',
   'SEQ': 'Serial Sequence',
   'UCN': 'Unique Component Number',
-  'PNR': 'Part Number (Replacement)',
+  'PNR': 'Part Number (Current)',
   'PNO': 'Part Number (Original)',
-  'UIC': 'Unique Item Code',
+  'UIC': 'UID Construct Number',
   'DMF': 'Date of Manufacture',
   'EXP': 'Expiration Date',
-  'PDT': 'Production Date',
-  'ESD': 'Effective Service Date',
-  'LLE': 'Limited Life Expires',
-  'ICC': 'Item Class Code',
+  'PDT': 'Part Description',
+  'ESD': 'ESD Sensitive Indicator',
+  'LLE': 'Life Limited Equipment Indicator',
+  'ICC': 'International Commodity Code',
   'LOT': 'Lot/Batch Number',
-  'LTN': 'Lot Traceability Number',
+  'LTN': 'Enterprise Lot Number',
   'CNT': 'Count/Quantity',
   'WGT': 'Weight',
   'UNT': 'Unit of Measure',
   'HAZ': 'Hazardous Material',
   'ECC': 'Equipment Condition',
-  'SWI': 'Software ID',
-  'TDN': 'Tag Data Number',
+  'SWI': 'Software Indicator',
+  'TDN': 'Certificate Tracking Number',
   'NSN': 'NATO Stock Number',
-  'FAB': 'Fabrication',
-  'DOH': 'Date of Overhaul',
-  'DNH': 'Date Next Overhaul',
+  'FAB': 'Fabricator (CAGE)',
+  'DOH': 'Last Hydrostatic Test Date',
+  'DNH': 'Next Hydrostatic Test Date',
   'OVD': 'Overhaul Date',
-  'OMM': 'OEM Maintenance Manual',
-  'PML': 'Prime Mfr Life Limit',
+  'OMM': 'OEM Code (CAGE)',
+  'PML': 'Part Modification Level',
 };
 
 /// 6-bit ASCII Map for ATA Spec 2000 encoding
@@ -115,6 +117,7 @@ const Map<String, String> kAscii6Map = {
   '111111': '?',
   '100000': ' ',
   '100001': '!',
+  '100010': '"', // ASCII 34 double quote (Appendix B Table 25)
   '100011': '#', '100100': '\$', '100101': '%',
   '100110': '&', '100111': "'",
   '101000': '(', '101001': ')', '101010': '*',
@@ -130,7 +133,10 @@ final Map<String, String> kAscii6Reverse = {
     if (e.value != 'NUL') e.value: e.key,
 };
 
-/// TEI Header IDs (per ATA Spec 2000)
+/// NOTE: ATA Spec 2000 USER memory is self-describing via ASCII TEI mnemonics
+/// ("MFR value*PNR value*...") delimited by '*'. There is NO binary TEI-header-ID
+/// scheme in the spec; the map below is informational only and is not used to
+/// decode tag memory.
 const Map<int, String> kTeiHeaderIds = {
   0x00: 'MFR', 0x01: 'CAG', 0x02: 'SPL', 0x03: 'SER',
   0x04: 'SEQ', 0x05: 'UCN', 0x10: 'PNR', 0x11: 'PNO',
@@ -164,9 +170,9 @@ String formatAtaDate(String? raw) {
   return '${raw.substring(0, 4)}/${raw.substring(4, 6)}/${raw.substring(6, 8)}';
 }
 
-/// Check if a field contains date data
+/// Check if a field contains date data (YYYYMMDD TEIs per ATA Spec 2000 Table 3).
+/// PDT (Part Description), ESD/LLE (indicators) are NOT dates.
 bool isDateField(String fieldId) {
-  return const {'DMF', 'EXP', 'PDT', 'ESD', 'LLE', 'DOH', 'DNH', 'OVD'}
-      .contains(fieldId);
+  return const {'DMF', 'EXP', 'OVD', 'DOH', 'DNH'}.contains(fieldId);
 }
 
