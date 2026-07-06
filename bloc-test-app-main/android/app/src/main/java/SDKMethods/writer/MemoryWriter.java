@@ -954,7 +954,7 @@ public class MemoryWriter {
             int lifecycleStartUnpadded = birthAddr + (2 + birthPayloadWords + 1);
             int alignPad = (16 - (lifecycleStartUnpadded % 16)) % 16;
             if (alignPad > 0) {
-                birthPayloadHex += "0".repeat(alignPad * 4);
+                birthPayloadHex += AtaEncodingUtils.zeros(alignPad * 4);
                 birthPayloadWords += alignPad;
                 Log.d(TAG, "📝 Birth padded " + alignPad + " words so Lifecycle is block-aligned at word "
                         + (birthAddr + 2 + birthPayloadWords + 1));
@@ -1181,7 +1181,7 @@ public class MemoryWriter {
             int minBirthPayloadWords = 5; // 2 + 5 + 1 = 8 words minimum
             if (birthPayloadWords < minBirthPayloadWords) {
                 int padWords = minBirthPayloadWords - birthPayloadWords;
-                birthPayloadHex += "0".repeat(padWords * 4);
+                birthPayloadHex += AtaEncodingUtils.zeros(padWords * 4);
                 birthPayloadWords = minBirthPayloadWords;
                 Log.d(TAG, "📝 MRT Birth Record padded to " + birthPayloadWords + " payload words (CDR alignment)");
             }
@@ -1486,7 +1486,7 @@ public class MemoryWriter {
                 Log.e(TAG, "❌ CDR Payload too large!");
                 return false;
             }
-            cdrBits += "0".repeat(requiredBits - cdrBits.length());
+            cdrBits += AtaEncodingUtils.zeros(requiredBits - cdrBits.length());
 
             String cdrPayloadHex = AtaEncodingUtils.bitsToHex(cdrBits);
 
@@ -1647,7 +1647,7 @@ public class MemoryWriter {
                 Log.e(TAG, "❌ Payload too large!");
                 return false;
             }
-            lifecycleBits += "0".repeat(requiredBits - lifecycleBits.length());
+            lifecycleBits += AtaEncodingUtils.zeros(requiredBits - lifecycleBits.length());
 
             String lifecyclePayloadHex = AtaEncodingUtils.bitsToHex(lifecycleBits);
 

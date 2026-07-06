@@ -476,6 +476,16 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
 
     @Override
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
-        // no-op
+        // Release the RFID reader when the engine detaches (app close) so the
+        // hardware is freed for other apps. Without this, the reader can stay
+        // locked and other RFID apps cannot read until the device is rebooted.
+        try {
+            UHFHelper.getInstance().stop();
+        } catch (Throwable ignored) {
+        }
+        try {
+            UHFHelper.getInstance().close();
+        } catch (Throwable ignored) {
+        }
     }
 }

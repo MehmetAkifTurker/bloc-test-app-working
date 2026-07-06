@@ -370,7 +370,19 @@ public class AtaEncodingUtils {
     }
 
     // ============== BINARY/HEX CONVERSION ==============
-    
+
+    /**
+     * Build a string of n '0' characters. API-safe replacement for
+     * String.repeat(int), which on Android only exists from API level 34
+     * (calling it on older devices throws NoSuchMethodError).
+     */
+    public static String zeros(int n) {
+        if (n <= 0) return "";
+        char[] c = new char[n];
+        java.util.Arrays.fill(c, '0');
+        return new String(c);
+    }
+
     /**
      * Convert binary string to hex
      */
@@ -379,13 +391,13 @@ public class AtaEncodingUtils {
         StringBuilder sb = new StringBuilder();
         for (String bin : chunks) {
             // Pad to 8 bits if needed (LSBs stay zero for a partial trailing chunk)
-            if (bin.length() < 8) bin = bin + "0".repeat(8 - bin.length());
+            if (bin.length() < 8) bin = bin + zeros(8 - bin.length());
             int decimal = Integer.parseInt(bin, 2);
             sb.append(String.format("%02X", decimal));
         }
         return sb.toString();
     }
-    
+
     /**
      * Convert bits to hex (4 bits per hex digit)
      */
@@ -394,7 +406,7 @@ public class AtaEncodingUtils {
         for (int i = 0; i < bits.length(); i += 4) {
             int end = Math.min(bits.length(), i + 4);
             String nibble = bits.substring(i, end);
-            if (nibble.length() < 4) nibble = nibble + "0".repeat(4 - nibble.length());
+            if (nibble.length() < 4) nibble = nibble + zeros(4 - nibble.length());
             hex.append(Integer.toHexString(Integer.parseInt(nibble, 2)).toUpperCase());
         }
         return hex.toString();
