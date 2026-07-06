@@ -560,7 +560,8 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
 
   Future<void> _addExtraFieldDialog() async {
     final used = _extraFields.map((e) => e.tei.code).toSet();
-    final available = kOptionalTeis.where((t) => !used.contains(t.code)).toList();
+    final available =
+        kOptionalTeis.where((t) => !used.contains(t.code)).toList();
     if (available.isEmpty) {
       _showSnackBar('All optional fields already added.');
       return;
@@ -647,475 +648,490 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
       },
       child: Scaffold(
         appBar: commonAppBar(context, 'TAG WRITER', showBack: true),
-        body: Padding(
-          padding: const EdgeInsets.all(10.0),
-          child: Theme(
-            data: Theme.of(context).copyWith(
-              // Brand color scheme
-              colorScheme: Theme.of(context).colorScheme.copyWith(
-                    primary: _brandNavy,
-                    secondary: _brandNavy,
-                  ),
-              // Dropdown menu theme
-              dropdownMenuTheme: DropdownMenuThemeData(
-                menuStyle: MenuStyle(
-                  backgroundColor: WidgetStateProperty.all(Colors.white),
-                ),
-              ),
-              // Dialog theme
-              dialogTheme: DialogTheme(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              // FilledButton theme (Delete button in dialogs)
-              filledButtonTheme: FilledButtonThemeData(
-                style: FilledButton.styleFrom(
-                  backgroundColor: _brandNavy,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-              // TextButton theme (Cancel button in dialogs)
-              textButtonTheme: TextButtonThemeData(
-                style: TextButton.styleFrom(
-                  foregroundColor: _brandNavy,
-                ),
-              ),
-              inputDecorationTheme: InputDecorationTheme(
-                labelStyle:
-                    const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                floatingLabelStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _brandNavy),
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: _brandNavy, width: 2),
-                ),
-              ),
-            ),
-            child: ListView(
-              children: [
-                _alignedFieldRow(
-                  field: DropdownButtonFormField<TagType>(
-                    value: _selectedTagType ??
-                        (_tagTypes.isNotEmpty ? _tagTypes.first : null),
-                    decoration: const InputDecoration(labelText: 'Tag Type'),
-                    isDense: true,
-                    isExpanded: true,
-                    menuMaxHeight: _menuMaxHeight,
-                    items: _tagTypes
-                        .map((t) => DropdownMenuItem(
-                            value: t,
-                            child: Text(
-                              t.isBuiltIn ? '🔒 ${t.toString()}' : t.toString(),
-                              overflow: TextOverflow.ellipsis,
-                            )))
-                        .toList(),
-                    onChanged: (v) => setState(() {
-                      _selectedTagType = v;
-                      _selectedFilter = v?.defaultFilter ?? _selectedFilter;
-                    }),
-                  ),
-                  addAction: IconButton(
-                    tooltip: 'Add Tag Type',
-                    icon: const Icon(Icons.add),
-                    constraints: _iconButtonConstraints,
-                    padding: _iconButtonPadding,
-                    onPressed: () async {
-                      final created = await Navigator.push<TagType>(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const TagTypeManagerPage()),
-                      );
-                      if (created != null) {
-                        setState(() {
-                          _tagTypes.add(created);
-                          _selectedTagType = created;
-                        });
-                        await _saveTagTypes();
-                      }
-                    },
-                  ),
-                  removeAction: IconButton(
-                    tooltip: _selectedTagType?.isBuiltIn == true
-                        ? 'Built-in preset (cannot delete)'
-                        : 'Remove Tag Type',
-                    icon: Icon(
-                      Icons.delete_outline,
-                      color: _selectedTagType?.isBuiltIn == true
-                          ? Colors.grey.shade400
-                          : null,
+        // Keep the bottom action buttons clear of the system navigation bar
+        // (otherwise the last ListView row sits partly under it).
+        body: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(10.0),
+            child: Theme(
+              data: Theme.of(context).copyWith(
+                // Brand color scheme
+                colorScheme: Theme.of(context).colorScheme.copyWith(
+                      primary: _brandNavy,
+                      secondary: _brandNavy,
                     ),
-                    constraints: _iconButtonConstraints,
-                    padding: _iconButtonPadding,
-                    onPressed: _selectedTagType?.isBuiltIn == true
-                        ? () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content:
-                                    Text('Built-in presets cannot be deleted'),
-                                backgroundColor: Colors.orange,
-                              ),
-                            );
-                          }
-                        : () async {
-                            // Count non-built-in types
-                            final userTypes =
-                                _tagTypes.where((t) => !t.isBuiltIn).length;
-                            if (userTypes <= 0) {
+                // Dropdown menu theme
+                dropdownMenuTheme: DropdownMenuThemeData(
+                  menuStyle: MenuStyle(
+                    backgroundColor: WidgetStateProperty.all(Colors.white),
+                  ),
+                ),
+                // Dialog theme
+                dialogTheme: DialogTheme(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                // FilledButton theme (Delete button in dialogs)
+                filledButtonTheme: FilledButtonThemeData(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _brandNavy,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                // TextButton theme (Cancel button in dialogs)
+                textButtonTheme: TextButtonThemeData(
+                  style: TextButton.styleFrom(
+                    foregroundColor: _brandNavy,
+                  ),
+                ),
+                inputDecorationTheme: InputDecorationTheme(
+                  labelStyle: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
+                  floatingLabelStyle: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: _brandNavy),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  focusedBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: _brandNavy, width: 2),
+                  ),
+                ),
+              ),
+              child: ListView(
+                children: [
+                  _alignedFieldRow(
+                    field: DropdownButtonFormField<TagType>(
+                      value: _selectedTagType ??
+                          (_tagTypes.isNotEmpty ? _tagTypes.first : null),
+                      decoration: const InputDecoration(labelText: 'Tag Type'),
+                      isDense: true,
+                      isExpanded: true,
+                      menuMaxHeight: _menuMaxHeight,
+                      items: _tagTypes
+                          .map((t) => DropdownMenuItem(
+                              value: t,
+                              child: Text(
+                                t.isBuiltIn
+                                    ? '🔒 ${t.toString()}'
+                                    : t.toString(),
+                                overflow: TextOverflow.ellipsis,
+                              )))
+                          .toList(),
+                      onChanged: (v) => setState(() {
+                        _selectedTagType = v;
+                        _selectedFilter = v?.defaultFilter ?? _selectedFilter;
+                      }),
+                    ),
+                    addAction: IconButton(
+                      tooltip: 'Add Tag Type',
+                      icon: const Icon(Icons.add),
+                      constraints: _iconButtonConstraints,
+                      padding: _iconButtonPadding,
+                      onPressed: () async {
+                        final created = await Navigator.push<TagType>(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const TagTypeManagerPage()),
+                        );
+                        if (created != null) {
+                          setState(() {
+                            _tagTypes.add(created);
+                            _selectedTagType = created;
+                          });
+                          await _saveTagTypes();
+                        }
+                      },
+                    ),
+                    removeAction: IconButton(
+                      tooltip: _selectedTagType?.isBuiltIn == true
+                          ? 'Built-in preset (cannot delete)'
+                          : 'Remove Tag Type',
+                      icon: Icon(
+                        Icons.delete_outline,
+                        color: _selectedTagType?.isBuiltIn == true
+                            ? Colors.grey.shade400
+                            : null,
+                      ),
+                      constraints: _iconButtonConstraints,
+                      padding: _iconButtonPadding,
+                      onPressed: _selectedTagType?.isBuiltIn == true
+                          ? () {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                    content: Text('No custom types to delete')),
+                                  content: Text(
+                                      'Built-in presets cannot be deleted'),
+                                  backgroundColor: Colors.orange,
+                                ),
                               );
-                              return;
                             }
-                            final ok = await showDialog<bool>(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('Remove Tag Type'),
-                                content:
-                                    Text('Delete "${_selectedTagType?.name}"?'),
-                                actions: [
-                                  TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(ctx, false),
-                                      style: TextButton.styleFrom(
-                                          foregroundColor: _brandNavy),
-                                      child: const Text('Cancel')),
-                                  FilledButton(
-                                      onPressed: () => Navigator.pop(ctx, true),
-                                      style: FilledButton.styleFrom(
-                                          backgroundColor: _brandNavy),
-                                      child: const Text('Delete')),
-                                ],
+                          : () async {
+                              // Count non-built-in types
+                              final userTypes =
+                                  _tagTypes.where((t) => !t.isBuiltIn).length;
+                              if (userTypes <= 0) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content:
+                                          Text('No custom types to delete')),
+                                );
+                                return;
+                              }
+                              final ok = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('Remove Tag Type'),
+                                  content: Text(
+                                      'Delete "${_selectedTagType?.name}"?'),
+                                  actions: [
+                                    TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, false),
+                                        style: TextButton.styleFrom(
+                                            foregroundColor: _brandNavy),
+                                        child: const Text('Cancel')),
+                                    FilledButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, true),
+                                        style: FilledButton.styleFrom(
+                                            backgroundColor: _brandNavy),
+                                        child: const Text('Delete')),
+                                  ],
+                                ),
+                              );
+                              if (ok == true) {
+                                setState(() {
+                                  _tagTypes.remove(_selectedTagType);
+                                  _selectedTagType = _tagTypes.first;
+                                });
+                                await _saveTagTypes();
+                              }
+                            },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _alignedFieldRow(
+                    field: DropdownButtonFormField<String>(
+                      value: _pnList.contains(_selectedPN) ? _selectedPN : null,
+                      decoration:
+                          const InputDecoration(labelText: "Part Number"),
+                      isDense: true,
+                      menuMaxHeight: _menuMaxHeight,
+                      items: _pnList
+                          .map(
+                              (e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .toList(),
+                      onChanged: (v) => setState(() => _selectedPN = v!),
+                    ),
+                    addAction: IconButton(
+                      tooltip: 'Add PN',
+                      icon: const Icon(Icons.add),
+                      constraints: _iconButtonConstraints,
+                      padding: _iconButtonPadding,
+                      onPressed: () => _addItemDialog(
+                        title: 'Add Part Number',
+                        key: _kPnListKey,
+                        target: _pnList,
+                        onSelected: (nv) => _selectedPN = nv,
+                      ),
+                    ),
+                    removeAction: IconButton(
+                      tooltip: 'Remove PN',
+                      icon: const Icon(Icons.delete_outline),
+                      constraints: _iconButtonConstraints,
+                      padding: _iconButtonPadding,
+                      onPressed: () => _removeSelectedDialog(
+                        title: 'Part Number',
+                        key: _kPnListKey,
+                        target: _pnList,
+                        selected: _selectedPN,
+                        onSelected: (nv) => _selectedPN = nv,
+                      ),
+                    ),
+                  ),
+                  _alignedFieldRow(
+                    field: TextFormField(
+                      controller: serialNumberController,
+                      decoration: const InputDecoration(
+                        labelText: 'Serial Number',
+                      ),
+                    ),
+                  ),
+                  _alignedFieldRow(
+                    field: DropdownButtonFormField<String>(
+                      value: _mfrList.contains(_selectedManufacturer)
+                          ? _selectedManufacturer
+                          : null,
+                      menuMaxHeight: _menuMaxHeight,
+                      decoration:
+                          const InputDecoration(labelText: "Manufacturer"),
+                      isDense: true,
+                      items: _mfrList
+                          .map(
+                              (e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .toList(),
+                      onChanged: (v) =>
+                          setState(() => _selectedManufacturer = v!),
+                    ),
+                    addAction: IconButton(
+                      tooltip: 'Add Manufacturer',
+                      icon: const Icon(Icons.add),
+                      constraints: _iconButtonConstraints,
+                      padding: _iconButtonPadding,
+                      onPressed: () => _addItemDialog(
+                        title: 'Add Manufacturer',
+                        key: _kMfrListKey,
+                        target: _mfrList,
+                        onSelected: (nv) => _selectedManufacturer = nv,
+                      ),
+                    ),
+                    removeAction: IconButton(
+                      tooltip: 'Remove Manufacturer',
+                      icon: const Icon(Icons.delete_outline),
+                      constraints: _iconButtonConstraints,
+                      padding: _iconButtonPadding,
+                      onPressed: () => _removeSelectedDialog(
+                        title: 'Manufacturer',
+                        key: _kMfrListKey,
+                        target: _mfrList,
+                        selected: _selectedManufacturer,
+                        onSelected: (nv) => _selectedManufacturer = nv,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _alignedFieldRow(
+                    field: DropdownButtonFormField<String>(
+                      value: _descList.contains(_selectedDesc)
+                          ? _selectedDesc
+                          : null,
+                      menuMaxHeight: _menuMaxHeight,
+                      decoration:
+                          const InputDecoration(labelText: "Item Description"),
+                      isDense: true,
+                      items: _descList
+                          .map(
+                              (e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .toList(),
+                      onChanged: (v) => setState(() => _selectedDesc = v!),
+                    ),
+                    addAction: IconButton(
+                      tooltip: 'Add Description',
+                      icon: const Icon(Icons.add),
+                      constraints: _iconButtonConstraints,
+                      padding: _iconButtonPadding,
+                      onPressed: () => _addItemDialog(
+                        title: 'Add Item Description',
+                        key: _kDescListKey,
+                        target: _descList,
+                        onSelected: (nv) => _selectedDesc = nv,
+                      ),
+                    ),
+                    removeAction: IconButton(
+                      tooltip: 'Remove Description',
+                      icon: const Icon(Icons.delete_outline),
+                      constraints: _iconButtonConstraints,
+                      padding: _iconButtonPadding,
+                      onPressed: () => _removeSelectedDialog(
+                        title: 'Item Description',
+                        key: _kDescListKey,
+                        target: _descList,
+                        selected: _selectedDesc,
+                        onSelected: (nv) => _selectedDesc = nv,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _alignedFieldRow(
+                    field: DropdownButtonFormField<int>(
+                      value: _selectedFilter,
+                      decoration:
+                          const InputDecoration(labelText: 'ATA EPC Filter'),
+                      isDense: true,
+                      isExpanded: true,
+                      alignment: AlignmentDirectional.centerStart,
+                      menuMaxHeight: _menuMaxHeight,
+                      items: kAtaFilterOptions
+                          .map((o) => DropdownMenuItem(
+                                value: o.value,
+                                child: Text(
+                                  '${o.value.toString().padLeft(2, '0')} – ${o.label}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  softWrap: false,
+                                ),
+                              ))
+                          .toList(),
+                      selectedItemBuilder: (context) => kAtaFilterOptions
+                          .map((o) => Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '${o.value.toString().padLeft(2, '0')} – ${o.label}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  softWrap: false,
+                                ),
+                              ))
+                          .toList(),
+                      onChanged: (v) => setState(
+                          () => _selectedFilter = v ?? _selectedFilter),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _alignedFieldRow(
+                    field: GestureDetector(
+                      onTap: () async {
+                        DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: _mfgDate ?? DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                          builder: (context, child) {
+                            return Theme(
+                              data: Theme.of(context).copyWith(
+                                colorScheme: const ColorScheme.light(
+                                  primary: _brandNavy,
+                                  onPrimary: Colors.white,
+                                  surface: Colors.white,
+                                  onSurface: Colors.black,
+                                ),
                               ),
+                              child: child!,
                             );
-                            if (ok == true) {
+                          },
+                        );
+                        if (picked != null) setState(() => _mfgDate = picked);
+                      },
+                      child: AbsorbPointer(
+                        child: TextFormField(
+                          controller: TextEditingController(
+                              text: manufactureDateDisplay),
+                          decoration: const InputDecoration(
+                            hintText: 'Manufacture Date (YYYY/MM/DD)',
+                            labelText: 'Manufacture Date',
+                          ),
+                        ),
+                      ),
+                    ),
+                    addAction: IconButton(
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.close),
+                      constraints: _iconButtonConstraints,
+                      padding: _iconButtonPadding,
+                      onPressed: _mfgDate == null
+                          ? null
+                          : () => setState(() => _mfgDate = null),
+                    ),
+                    removeAction: null,
+                  ),
+                  const SizedBox(height: 12),
+                  _alignedFieldRow(
+                    field: GestureDetector(
+                      onTap: () async {
+                        DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: _expDate ?? DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                          builder: (context, child) {
+                            return Theme(
+                              data: Theme.of(context).copyWith(
+                                colorScheme: const ColorScheme.light(
+                                  primary: _brandNavy,
+                                  onPrimary: Colors.white,
+                                  surface: Colors.white,
+                                  onSurface: Colors.black,
+                                ),
+                              ),
+                              child: child!,
+                            );
+                          },
+                        );
+                        if (picked != null) setState(() => _expDate = picked);
+                      },
+                      child: AbsorbPointer(
+                        child: TextFormField(
+                          controller:
+                              TextEditingController(text: expireDateDisplay),
+                          decoration: const InputDecoration(
+                            hintText: 'Expire Date (YYYY/MM/DD)',
+                            labelText: 'Expire Date',
+                          ),
+                        ),
+                      ),
+                    ),
+                    addAction: IconButton(
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.close),
+                      constraints: _iconButtonConstraints,
+                      padding: _iconButtonPadding,
+                      onPressed: _expDate == null
+                          ? null
+                          : () => setState(() => _expDate = null),
+                    ),
+                    removeAction: null,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildExtraFieldsSection(),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _brandNavy,
+                            shape: const StadiumBorder(),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            fixedSize: const Size.fromHeight(48),
+                            textStyle:
+                                const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          onPressed: () async {
+                            final created = await Navigator.push<TagType>(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const TagTypeManagerPage()),
+                            );
+                            if (created != null) {
                               setState(() {
-                                _tagTypes.remove(_selectedTagType);
-                                _selectedTagType = _tagTypes.first;
+                                _tagTypes.add(created);
+                                _selectedTagType = created;
                               });
                               await _saveTagTypes();
                             }
                           },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _alignedFieldRow(
-                  field: DropdownButtonFormField<String>(
-                    value: _pnList.contains(_selectedPN) ? _selectedPN : null,
-                    decoration: const InputDecoration(labelText: "Part Number"),
-                    isDense: true,
-                    menuMaxHeight: _menuMaxHeight,
-                    items: _pnList
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                        .toList(),
-                    onChanged: (v) => setState(() => _selectedPN = v!),
-                  ),
-                  addAction: IconButton(
-                    tooltip: 'Add PN',
-                    icon: const Icon(Icons.add),
-                    constraints: _iconButtonConstraints,
-                    padding: _iconButtonPadding,
-                    onPressed: () => _addItemDialog(
-                      title: 'Add Part Number',
-                      key: _kPnListKey,
-                      target: _pnList,
-                      onSelected: (nv) => _selectedPN = nv,
-                    ),
-                  ),
-                  removeAction: IconButton(
-                    tooltip: 'Remove PN',
-                    icon: const Icon(Icons.delete_outline),
-                    constraints: _iconButtonConstraints,
-                    padding: _iconButtonPadding,
-                    onPressed: () => _removeSelectedDialog(
-                      title: 'Part Number',
-                      key: _kPnListKey,
-                      target: _pnList,
-                      selected: _selectedPN,
-                      onSelected: (nv) => _selectedPN = nv,
-                    ),
-                  ),
-                ),
-                _alignedFieldRow(
-                  field: TextFormField(
-                    controller: serialNumberController,
-                    decoration: const InputDecoration(
-                      labelText: 'Serial Number',
-                    ),
-                  ),
-                ),
-                _alignedFieldRow(
-                  field: DropdownButtonFormField<String>(
-                    value: _mfrList.contains(_selectedManufacturer)
-                        ? _selectedManufacturer
-                        : null,
-                    menuMaxHeight: _menuMaxHeight,
-                    decoration:
-                        const InputDecoration(labelText: "Manufacturer"),
-                    isDense: true,
-                    items: _mfrList
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                        .toList(),
-                    onChanged: (v) =>
-                        setState(() => _selectedManufacturer = v!),
-                  ),
-                  addAction: IconButton(
-                    tooltip: 'Add Manufacturer',
-                    icon: const Icon(Icons.add),
-                    constraints: _iconButtonConstraints,
-                    padding: _iconButtonPadding,
-                    onPressed: () => _addItemDialog(
-                      title: 'Add Manufacturer',
-                      key: _kMfrListKey,
-                      target: _mfrList,
-                      onSelected: (nv) => _selectedManufacturer = nv,
-                    ),
-                  ),
-                  removeAction: IconButton(
-                    tooltip: 'Remove Manufacturer',
-                    icon: const Icon(Icons.delete_outline),
-                    constraints: _iconButtonConstraints,
-                    padding: _iconButtonPadding,
-                    onPressed: () => _removeSelectedDialog(
-                      title: 'Manufacturer',
-                      key: _kMfrListKey,
-                      target: _mfrList,
-                      selected: _selectedManufacturer,
-                      onSelected: (nv) => _selectedManufacturer = nv,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _alignedFieldRow(
-                  field: DropdownButtonFormField<String>(
-                    value: _descList.contains(_selectedDesc) ? _selectedDesc : null,
-                    menuMaxHeight: _menuMaxHeight,
-                    decoration:
-                        const InputDecoration(labelText: "Item Description"),
-                    isDense: true,
-                    items: _descList
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                        .toList(),
-                    onChanged: (v) => setState(() => _selectedDesc = v!),
-                  ),
-                  addAction: IconButton(
-                    tooltip: 'Add Description',
-                    icon: const Icon(Icons.add),
-                    constraints: _iconButtonConstraints,
-                    padding: _iconButtonPadding,
-                    onPressed: () => _addItemDialog(
-                      title: 'Add Item Description',
-                      key: _kDescListKey,
-                      target: _descList,
-                      onSelected: (nv) => _selectedDesc = nv,
-                    ),
-                  ),
-                  removeAction: IconButton(
-                    tooltip: 'Remove Description',
-                    icon: const Icon(Icons.delete_outline),
-                    constraints: _iconButtonConstraints,
-                    padding: _iconButtonPadding,
-                    onPressed: () => _removeSelectedDialog(
-                      title: 'Item Description',
-                      key: _kDescListKey,
-                      target: _descList,
-                      selected: _selectedDesc,
-                      onSelected: (nv) => _selectedDesc = nv,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _alignedFieldRow(
-                  field: DropdownButtonFormField<int>(
-                    value: _selectedFilter,
-                    decoration:
-                        const InputDecoration(labelText: 'ATA EPC Filter'),
-                    isDense: true,
-                    isExpanded: true,
-                    alignment: AlignmentDirectional.centerStart,
-                    menuMaxHeight: _menuMaxHeight,
-                    items: kAtaFilterOptions
-                        .map((o) => DropdownMenuItem(
-                              value: o.value,
-                              child: Text(
-                                '${o.value.toString().padLeft(2, '0')} – ${o.label}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                softWrap: false,
-                              ),
-                            ))
-                        .toList(),
-                    selectedItemBuilder: (context) => kAtaFilterOptions
-                        .map((o) => Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                '${o.value.toString().padLeft(2, '0')} – ${o.label}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                softWrap: false,
-                              ),
-                            ))
-                        .toList(),
-                    onChanged: (v) =>
-                        setState(() => _selectedFilter = v ?? _selectedFilter),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _alignedFieldRow(
-                  field: GestureDetector(
-                    onTap: () async {
-                      DateTime? picked = await showDatePicker(
-                        context: context,
-                        initialDate: _mfgDate ?? DateTime.now(),
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                        builder: (context, child) {
-                          return Theme(
-                            data: Theme.of(context).copyWith(
-                              colorScheme: const ColorScheme.light(
-                                primary: _brandNavy,
-                                onPrimary: Colors.white,
-                                surface: Colors.white,
-                                onSurface: Colors.black,
-                              ),
-                            ),
-                            child: child!,
-                          );
-                        },
-                      );
-                      if (picked != null) setState(() => _mfgDate = picked);
-                    },
-                    child: AbsorbPointer(
-                      child: TextFormField(
-                        controller:
-                            TextEditingController(text: manufactureDateDisplay),
-                        decoration: const InputDecoration(
-                          hintText: 'Manufacture Date (YYYY/MM/DD)',
-                          labelText: 'Manufacture Date',
+                          icon: const Icon(Icons.memory),
+                          label: const Text('Create New Chip'),
                         ),
                       ),
-                    ),
-                  ),
-                  addAction: IconButton(
-                    tooltip: 'Clear',
-                    icon: const Icon(Icons.close),
-                    constraints: _iconButtonConstraints,
-                    padding: _iconButtonPadding,
-                    onPressed: _mfgDate == null
-                        ? null
-                        : () => setState(() => _mfgDate = null),
-                  ),
-                  removeAction: null,
-                ),
-                const SizedBox(height: 12),
-                _alignedFieldRow(
-                  field: GestureDetector(
-                    onTap: () async {
-                      DateTime? picked = await showDatePicker(
-                        context: context,
-                        initialDate: _expDate ?? DateTime.now(),
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                        builder: (context, child) {
-                          return Theme(
-                            data: Theme.of(context).copyWith(
-                              colorScheme: const ColorScheme.light(
-                                primary: _brandNavy,
-                                onPrimary: Colors.white,
-                                surface: Colors.white,
-                                onSurface: Colors.black,
-                              ),
-                            ),
-                            child: child!,
-                          );
-                        },
-                      );
-                      if (picked != null) setState(() => _expDate = picked);
-                    },
-                    child: AbsorbPointer(
-                      child: TextFormField(
-                        controller:
-                            TextEditingController(text: expireDateDisplay),
-                        decoration: const InputDecoration(
-                          hintText: 'Expire Date (YYYY/MM/DD)',
-                          labelText: 'Expire Date',
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            foregroundColor: _brandNavy,
+                            shape: const StadiumBorder(),
+                            fixedSize: const Size.fromHeight(48),
+                            textStyle:
+                                const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          onPressed: _isWriting ? null : _writeToTag,
+                          child: _isWriting
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('Write To Tag'),
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                  addAction: IconButton(
-                    tooltip: 'Clear',
-                    icon: const Icon(Icons.close),
-                    constraints: _iconButtonConstraints,
-                    padding: _iconButtonPadding,
-                    onPressed: _expDate == null
-                        ? null
-                        : () => setState(() => _expDate = null),
-                  ),
-                  removeAction: null,
-                ),
-                const SizedBox(height: 16),
-                _buildExtraFieldsSection(),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: _brandNavy,
-                          shape: const StadiumBorder(),
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          fixedSize: const Size.fromHeight(48),
-                          textStyle:
-                              const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        onPressed: () async {
-                          final created = await Navigator.push<TagType>(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const TagTypeManagerPage()),
-                          );
-                          if (created != null) {
-                            setState(() {
-                              _tagTypes.add(created);
-                              _selectedTagType = created;
-                            });
-                            await _saveTagTypes();
-                          }
-                        },
-                        icon: const Icon(Icons.memory),
-                        label: const Text('Create New Chip'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: _brandNavy,
-                          shape: const StadiumBorder(),
-                          fixedSize: const Size.fromHeight(48),
-                          textStyle:
-                              const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        onPressed: _isWriting ? null : _writeToTag,
-                        child: _isWriting
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text('Write To Tag'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
