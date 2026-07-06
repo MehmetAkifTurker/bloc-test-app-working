@@ -607,29 +607,30 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
         for (final f in _extraFields)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: f.ctrl,
-                    maxLength: f.tei.maxLen,
-                    textCapitalization: TextCapitalization.characters,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      counterText: '',
-                      labelText: '${f.tei.code} — ${f.tei.label}',
-                    ),
-                  ),
+            // Reuse the shared aligned-row layout so optional fields line up with
+            // the main fields: the delete button sits in the same rightmost action
+            // column (the middle "+" slot stays empty for these rows).
+            child: _alignedFieldRow(
+              field: TextField(
+                controller: f.ctrl,
+                maxLength: f.tei.maxLen,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  isDense: true,
+                  counterText: '',
+                  labelText: '${f.tei.code} — ${f.tei.label}',
                 ),
-                IconButton(
-                  tooltip: 'Remove',
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => setState(() {
-                    f.ctrl.dispose();
-                    _extraFields.remove(f);
-                  }),
-                ),
-              ],
+              ),
+              removeAction: IconButton(
+                tooltip: 'Remove',
+                icon: const Icon(Icons.delete_outline),
+                constraints: _iconButtonConstraints,
+                padding: _iconButtonPadding,
+                onPressed: () => setState(() {
+                  f.ctrl.dispose();
+                  _extraFields.remove(f);
+                }),
+              ),
             ),
           ),
       ],
