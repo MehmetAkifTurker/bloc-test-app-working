@@ -62,6 +62,16 @@ public class MemoryWriter {
         return instance;
     }
 
+    /**
+     * ATA Spec 2000 Birth Record serial TEI, selected by the UID Construct
+     * (Birth Record §1.1 item 4):
+     *   UIC=2 (Construct 2: serial unique within the Part Number) -> SEQ (needs PNO)
+     *   UIC=1 (Construct 1: serial unique within the CAGE code)   -> SER
+     */
+    private String serialTei() {
+        return currentUidConstruct == 2 ? "SEQ" : "SER";
+    }
+
     // ==================== CHIP CONFIGURATION ====================
 
     public boolean prepareAtaChip(String recordType, int epcWords, int userWords,
@@ -784,7 +794,7 @@ public class MemoryWriter {
                 payloadBuilder.append("*MFR ")
                         .append(manufacturer.length() > 5 ? manufacturer.substring(0, 5) : manufacturer);
             if (serialNumber != null && !serialNumber.isEmpty())
-                payloadBuilder.append("*SER ")
+                payloadBuilder.append("*").append(serialTei()).append(" ")
                         .append(serialNumber.length() > 30 ? serialNumber.substring(0, 30) : serialNumber);
             if (partNumber != null && !partNumber.isEmpty())
                 payloadBuilder.append("*PNO ")
@@ -908,7 +918,7 @@ public class MemoryWriter {
                 birthPayload.append("MFR ")
                         .append(manufacturer.length() > 5 ? manufacturer.substring(0, 5) : manufacturer).append("*");
             if (serialNumber != null && !serialNumber.isEmpty())
-                birthPayload.append("SER ")
+                birthPayload.append(serialTei()).append(" ")
                         .append(serialNumber.length() > 30 ? serialNumber.substring(0, 30) : serialNumber).append("*");
             if (partNumber != null && !partNumber.isEmpty())
                 birthPayload.append("PNO ").append(partNumber.length() > 32 ? partNumber.substring(0, 32) : partNumber)
@@ -1144,7 +1154,7 @@ public class MemoryWriter {
                 birthPayload.append("MFR ")
                         .append(manufacturer.length() > 5 ? manufacturer.substring(0, 5) : manufacturer).append("*");
             if (serialNumber != null && !serialNumber.isEmpty())
-                birthPayload.append("SER ")
+                birthPayload.append(serialTei()).append(" ")
                         .append(serialNumber.length() > 30 ? serialNumber.substring(0, 30) : serialNumber).append("*");
             if (partNumber != null && !partNumber.isEmpty())
                 birthPayload.append("PNO ").append(partNumber.length() > 32 ? partNumber.substring(0, 32) : partNumber)

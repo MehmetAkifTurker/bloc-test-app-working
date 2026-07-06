@@ -420,7 +420,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     }
     if (serialNumber.length > 30) {
       _showSnackBar(
-          "Serial Number (SER) is too long (max 30 chars per ATA Spec).");
+          "Serial Number (SEQ) is too long (max 30 chars per ATA Spec).");
       return;
     }
     if (_selectedManufacturer.trim().length != 5) {
