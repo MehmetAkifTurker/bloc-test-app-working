@@ -57,7 +57,6 @@ class OptionalTei {
 
 const List<OptionalTei> kOptionalTeis = [
   OptionalTei('PNR', 'Current Part Number', 32),
-  OptionalTei('SEQ', 'Sequence Number', 30),
   OptionalTei('OVD', 'Last Overhaul Date (YYYYMMDD)', 8),
   OptionalTei('DOH', 'Hydrostatic Test Date (YYYYMMDD)', 8),
   OptionalTei('PML', 'Part Modification Level', 100),
@@ -66,10 +65,12 @@ const List<OptionalTei> kOptionalTeis = [
   OptionalTei('LLE', 'Life Limited (0/1)', 1),
   OptionalTei('LOT', 'Lot / Batch Number', 15),
   OptionalTei('CND', 'Condition (SRV/UNS/UNK)', 3),
-  // NOTE: No CAG/SPL option here. The CAGE code is already written as MFR from the
+  // NOTE: No CAG/SPL option — the CAGE code is already written as MFR from the
   // mandatory manufacturer field, and ATA Spec 2000 (Birth Record, §1.1) permits
-  // only ONE of MFR/CAG/SPL per record — offering CAG here would produce an
-  // invalid record carrying both MFR and CAG.
+  // only ONE of MFR/CAG/SPL per record. Likewise no SEQ/UCN option — the serial
+  // is already written from the mandatory Serial Number field, and the spec's
+  // serial combinations (MFR/SER, MFR/PNO/SEQ, CAG/SER, SPL/UCN) use exactly one
+  // serial TEI, selected by the UID Construct (UIC).
 ];
 
 class _ExtraField {
