@@ -57,7 +57,7 @@ public class UHFManager {
 
     // ==================== CONNECTION ====================
 
-    public boolean connect() {
+    public synchronized boolean connect() {
         try {
             mReader = RFIDWithUHFUART.getInstance();
         } catch (Exception ex) {
@@ -130,7 +130,7 @@ public class UHFManager {
         }
     }
 
-    public void close() {
+    public synchronized void close() {
         if (mReader != null) {
             mReader.free();
             mReader = null;

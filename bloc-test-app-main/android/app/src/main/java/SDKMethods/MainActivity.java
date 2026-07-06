@@ -27,6 +27,40 @@ public class MainActivity extends FlutterActivity {
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        // Re-acquire the UHF reader when returning to the foreground. It is released
+        // in onStop() so other RFID apps can use the reader while we are backgrounded.
+        // Run off the main thread: connect() opens the UART and can block.
+        new Thread(() -> {
+            try {
+                if (!UHFHelper.getInstance().isConnected()) {
+                    UHFHelper.getInstance().connect();
+                }
+            } catch (Throwable t) {
+                Log.w("MainActivity", "UHF reconnect on start failed: " + t.getMessage());
+            }
+        }).start();
+    }
+
+    @Override
+    protected void onStop() {
+        // Release the UHF reader (free the UART) when the app is backgrounded so
+        // other RFID apps can open it. Without this the reader stays locked until
+        // the device is rebooted. onStop fires only when the app leaves the
+        // foreground (not for in-app Flutter navigation, which stays in one activity).
+        try {
+            UHFHelper.getInstance().stop();
+        } catch (Throwable ignored) {
+        }
+        try {
+            UHFHelper.getInstance().close();
+        } catch (Throwable ignored) {
+        }
+        super.onStop();
+    }
+
+    @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         final int code = event.getKeyCode();
         final int action = event.getAction();
