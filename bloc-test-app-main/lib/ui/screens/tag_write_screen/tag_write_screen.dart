@@ -66,7 +66,10 @@ const List<OptionalTei> kOptionalTeis = [
   OptionalTei('LLE', 'Life Limited (0/1)', 1),
   OptionalTei('LOT', 'Lot / Batch Number', 15),
   OptionalTei('CND', 'Condition (SRV/UNS/UNK)', 3),
-  OptionalTei('CAG', 'CAGE Code', 5),
+  // NOTE: No CAG/SPL option here. The CAGE code is already written as MFR from the
+  // mandatory manufacturer field, and ATA Spec 2000 (Birth Record, §1.1) permits
+  // only ONE of MFR/CAG/SPL per record — offering CAG here would produce an
+  // invalid record carrying both MFR and CAG.
 ];
 
 class _ExtraField {
