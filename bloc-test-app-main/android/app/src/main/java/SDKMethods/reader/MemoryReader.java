@@ -87,42 +87,14 @@ public class MemoryReader {
             UHFManager.getInstance().clearFilter();
 
             int epcBits = epcHex.length() * 4;
-            StringBuilder fullHex = new StringBuilder();
-
-            // First chunk with retry
-            String firstChunk = readChunkWithRetry(reader, epcHex, epcBits, 0, CHUNK_SIZE, true);
-            if (firstChunk == null || firstChunk.length() < 16) {
-                Log.w(TAG, "First chunk failed");
-                return "";
-            }
-
-            fullHex.append(firstChunk);
-            int targetWords = parseTargetWords(firstChunk);
-            Log.i(TAG, "ToC says " + targetWords + " words");
-
-            // Read remaining chunks - optimized with larger chunks and shorter delays
-            int offset = CHUNK_SIZE;
-            while (offset < targetWords) {
-                int wordsToRead = Math.min(CHUNK_SIZE, targetWords - offset);
-                // Read exactly the remaining words so the final chunk never over-reads past
-                // the tag's ATA memory (which triggers a Gen2 memory-overrun and truncation).
-                String chunkHex = readChunkWithRetry(reader, epcHex, epcBits, offset, wordsToRead, false);
-
-                if (chunkHex == null || chunkHex.isEmpty()) {
-                    Log.d(TAG, "Chunk at offset " + offset + " failed");
-                    break;
-                }
-
-                fullHex.append(chunkHex);
-                Thread.sleep(15); // Reduced from 40ms
-                offset += wordsToRead;
-            }
-
-            String result = fullHex.toString();
+            // EPC-filtered read (filter on EPC bank at bit 32, after the PC word).
+            String result = readUserMemoryChunked(reader,
+                    RFIDWithUHFUART.Bank_EPC, 32, epcBits, epcHex, 40, 20, 15);
             if (result.length() >= 16) {
                 Log.i(TAG, "✅ EPC-READ success (" + (result.length() / 4) + " words)");
                 return result;
             }
+            Log.w(TAG, "First chunk failed");
             return "";
 
         } catch (Exception e) {
@@ -272,60 +244,14 @@ public class MemoryReader {
                 (filterTid.length() > 24 ? "..." : ""));
 
         try {
-            StringBuilder fullHex = new StringBuilder();
-
-            // First chunk with retry
-            String firstChunk = null;
-            for (int retry = 0; retry < MAX_RETRIES; retry++) {
-                firstChunk = reader.readData("00000000",
-                        RFIDWithUHFUART.Bank_TID, 0, tidBits, filterTid,
-                        RFIDWithUHFUART.Bank_USER, 0, CHUNK_SIZE);
-
-                if (firstChunk != null && firstChunk.length() >= 16)
-                    break;
-                if (retry < MAX_RETRIES - 1)
-                    Thread.sleep(50);
-            }
-
-            if (firstChunk == null || firstChunk.length() < 16) {
-                return null; // Failed with this TID length
-            }
-
-            fullHex.append(firstChunk);
-            int targetWords = parseTargetWords(firstChunk);
-            Log.i(TAG, "ToC says " + targetWords + " words");
-
-            // Read remaining chunks
-            int offset = CHUNK_SIZE;
-            while (offset < targetWords) {
-                int wordsToRead = Math.min(CHUNK_SIZE, targetWords - offset);
-                String chunkHex = null;
-
-                for (int retry = 0; retry < MAX_RETRIES; retry++) {
-                    chunkHex = reader.readData("00000000",
-                            RFIDWithUHFUART.Bank_TID, 0, tidBits, filterTid,
-                            RFIDWithUHFUART.Bank_USER, offset, wordsToRead);
-
-                    if (chunkHex != null && !chunkHex.isEmpty())
-                        break;
-                    if (retry < MAX_RETRIES - 1)
-                        Thread.sleep(25);
-                }
-
-                if (chunkHex == null || chunkHex.isEmpty())
-                    break;
-
-                fullHex.append(chunkHex);
-                Thread.sleep(10);
-                offset += CHUNK_SIZE;
-            }
-
-            String result = fullHex.toString();
+            // TID-filtered read (filter on TID bank from bit 0).
+            String result = readUserMemoryChunked(reader,
+                    RFIDWithUHFUART.Bank_TID, 0, tidBits, filterTid, 50, 25, 10);
             if (result.length() >= 16) {
                 Log.i(TAG, "✅ TID-READ[" + filterTid.length() + "c] success (" + (result.length() / 4) + " words)");
                 return result;
             }
-            return null;
+            return null; // Failed with this TID length
 
         } catch (Exception e) {
             Log.d(TAG, "TID-READ[" + filterTid.length() + "c] error: " + e.getMessage());
@@ -538,22 +464,76 @@ public class MemoryReader {
 
     // ==================== PRIVATE HELPERS ====================
 
-    private String readChunkWithRetry(RFIDWithUHFUART reader, String epcHex, int epcBits, int offset,
-            int wordCount, boolean isFirst) {
+    /**
+     * Read the full ATA USER memory of the single tag matched by the given filter
+     * (EPC or TID bank). Shared by the EPC- and TID-filtered read paths.
+     *
+     * Reads the first chunk to learn the ATA memory size (parseTargetWords), then
+     * reads the remaining words in CHUNK_SIZE pieces. The final piece is sized to the
+     * exact remainder so it never over-reads past the tag's memory (a Gen2 overrun
+     * would truncate the read). Per-call sleep values keep each path's tuned timing.
+     *
+     * @return USER memory hex (>=16 chars) or "" on failure.
+     */
+    private String readUserMemoryChunked(RFIDWithUHFUART reader,
+            int filterBank, int filterStart, int filterBits, String filterData,
+            int firstRetrySleepMs, int retrySleepMs, int loopSleepMs) throws InterruptedException {
+
+        StringBuilder fullHex = new StringBuilder();
+
+        // First chunk (also learns the ATA memory size from the ToC header).
+        String firstChunk = readUserChunk(reader, filterBank, filterStart, filterBits, filterData,
+                0, CHUNK_SIZE, true, firstRetrySleepMs);
+        if (firstChunk == null || firstChunk.length() < 16) {
+            return "";
+        }
+        fullHex.append(firstChunk);
+
+        int targetWords = parseTargetWords(firstChunk);
+        Log.i(TAG, "ToC says " + targetWords + " words");
+
+        int offset = CHUNK_SIZE;
+        while (offset < targetWords) {
+            int wordsToRead = Math.min(CHUNK_SIZE, targetWords - offset);
+            String chunkHex = readUserChunk(reader, filterBank, filterStart, filterBits, filterData,
+                    offset, wordsToRead, false, retrySleepMs);
+            if (chunkHex == null || chunkHex.isEmpty()) {
+                Log.d(TAG, "Chunk at offset " + offset + " failed");
+                break;
+            }
+            fullHex.append(chunkHex);
+            Thread.sleep(loopSleepMs);
+            offset += wordsToRead;
+        }
+
+        String result = fullHex.toString();
+        return result.length() >= 16 ? result : "";
+    }
+
+    /**
+     * Read one USER-memory chunk (wordCount words at offset) with MAX_RETRIES retries,
+     * targeting the tag matched by the given filter.
+     *
+     * @param isFirst first chunk requires >=16 chars (a valid ToC header); later chunks
+     *                only need to be non-empty.
+     * @return chunk hex, or null if all retries failed.
+     */
+    private String readUserChunk(RFIDWithUHFUART reader,
+            int filterBank, int filterStart, int filterBits, String filterData,
+            int offset, int wordCount, boolean isFirst, int retrySleepMs) throws InterruptedException {
         for (int retry = 0; retry < MAX_RETRIES; retry++) {
             try {
                 String chunk = reader.readData("00000000",
-                        RFIDWithUHFUART.Bank_EPC, 32, epcBits, epcHex,
+                        filterBank, filterStart, filterBits, filterData,
                         RFIDWithUHFUART.Bank_USER, offset, wordCount);
-
                 if (chunk != null && (isFirst ? chunk.length() >= 16 : !chunk.isEmpty())) {
                     return chunk;
                 }
-                if (retry < MAX_RETRIES - 1)
-                    Thread.sleep(isFirst ? 40 : 20); // Reduced delays
             } catch (Exception e) {
                 Log.w(TAG, "Chunk retry " + retry + " failed: " + e.getMessage());
             }
+            if (retry < MAX_RETRIES - 1)
+                Thread.sleep(retrySleepMs);
         }
         return null;
     }
