@@ -116,11 +116,30 @@ public class MemoryReader {
      * @return EPC -> USER hex ("" for EPCs whose read failed); EPCs after an
      *         abort are absent.
      */
+    /**
+     * One batch job: read USER words [startWord, targetWords) of the tag with
+     * this EPC. startWord=0 with targetWords=0 means "full read, learn the
+     * size from the ToC header" (the pre-slice behaviour). startWord>0 resumes
+     * AFTER an existing combined-mode slice, so already-captured words are
+     * never read twice.
+     */
+    public static class UserReadJob {
+        public final String epcHex;
+        public final int startWord;
+        public final int targetWords;
+
+        public UserReadJob(String epcHex, int startWord, int targetWords) {
+            this.epcHex = epcHex;
+            this.startWord = startWord;
+            this.targetWords = targetWords;
+        }
+    }
+
     public synchronized java.util.Map<String, String> readUserMemoryForEpcsBatch(
-            java.util.List<String> epcs) {
+            java.util.List<UserReadJob> jobs) {
         java.util.Map<String, String> out = new java.util.HashMap<>();
         RFIDWithUHFUART reader = UHFManager.getInstance().getReader();
-        if (reader == null || epcs == null || epcs.isEmpty())
+        if (reader == null || jobs == null || jobs.isEmpty())
             return out;
 
         boolean wasRunning = InventoryManager.getInstance().isStarted();
@@ -131,22 +150,32 @@ public class MemoryReader {
             }
             UHFManager.getInstance().clearFilter();
 
-            for (String epcHex : epcs) {
-                if (epcHex == null || epcHex.isEmpty())
+            for (UserReadJob job : jobs) {
+                if (job == null || job.epcHex == null || job.epcHex.isEmpty())
                     continue;
                 if (wasRunning && !InventoryManager.getInstance().isStarted())
                     break; // user pressed Stop mid-batch
                 try {
-                    int epcBits = epcHex.length() * 4;
-                    String result = readUserMemoryChunked(reader,
-                            RFIDWithUHFUART.Bank_EPC, 32, epcBits, epcHex, 40, 20, 15);
-                    out.put(epcHex, result != null ? result : "");
+                    int epcBits = job.epcHex.length() * 4;
+                    String result;
+                    if (job.startWord > 0 && job.targetWords > job.startWord) {
+                        // Resume after the combined-mode slice: only the
+                        // remainder, single call when it fits one chunk.
+                        result = readUserRangeChunked(reader,
+                                RFIDWithUHFUART.Bank_EPC, 32, epcBits, job.epcHex,
+                                job.startWord, job.targetWords, 20, 15);
+                    } else {
+                        result = readUserMemoryChunked(reader,
+                                RFIDWithUHFUART.Bank_EPC, 32, epcBits, job.epcHex,
+                                40, 20, 15);
+                    }
+                    out.put(job.epcHex, result != null ? result : "");
                     Thread.sleep(15); // brief gap between tags within the batch
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     break;
                 } catch (Exception e) {
-                    out.put(epcHex, "");
+                    out.put(job.epcHex, "");
                 }
             }
             return out;
@@ -159,6 +188,31 @@ public class MemoryReader {
             // Only resume if the scan is still supposed to be running.
             restoreInventory(wasRunning && InventoryManager.getInstance().isStarted());
         }
+    }
+
+    /**
+     * Read USER words [startWord, targetWords) in CHUNK_SIZE pieces (single
+     * call when the remainder fits). Returns ONLY the requested range — the
+     * caller appends it to the words it already holds.
+     */
+    private String readUserRangeChunked(RFIDWithUHFUART reader,
+            int filterBank, int filterStart, int filterBits, String filterData,
+            int startWord, int targetWords, int retrySleepMs, int loopSleepMs)
+            throws InterruptedException {
+        StringBuilder hex = new StringBuilder();
+        int offset = startWord;
+        while (offset < targetWords) {
+            int wordsToRead = Math.min(CHUNK_SIZE, targetWords - offset);
+            String chunk = readUserChunk(reader, filterBank, filterStart, filterBits,
+                    filterData, offset, wordsToRead, false, retrySleepMs);
+            if (chunk == null || chunk.isEmpty())
+                break;
+            hex.append(chunk);
+            offset += wordsToRead;
+            if (offset < targetWords)
+                Thread.sleep(loopSleepMs);
+        }
+        return hex.toString();
     }
 
     // ==================== TID FILTERED READ ====================

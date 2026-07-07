@@ -221,13 +221,30 @@ public class InventoryManager {
                         }
                     }
                     candidates.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
-                    java.util.List<String> batch = new java.util.ArrayList<>();
+                    java.util.List<SDKMethods.reader.MemoryReader.UserReadJob> batch =
+                            new java.util.ArrayList<>();
                     for (java.util.Map.Entry<String, Long> c : candidates) {
-                        batch.add(c.getKey());
+                        // Resume after the combined-mode slice when we have one:
+                        // read only words [captured, declared) instead of
+                        // re-reading from word 0.
+                        String epcKey = c.getKey();
+                        EPC cur = tagList.get(epcKey);
+                        String u = cur != null ? cur.getUser() : null;
+                        int startWord = 0, targetWords = 0;
+                        if (u != null && u.length() >= 16) {
+                            startWord = u.length() / 4;
+                            targetWords = SDKMethods.reader.MemoryReader.parseTargetWords(u);
+                        }
+                        batch.add(new SDKMethods.reader.MemoryReader.UserReadJob(
+                                epcKey, startWord, targetWords));
                         if (batch.size() >= batchLimit) break;
                     }
                     if (batch.isEmpty()) {
-                        if (pendingTotal > 0 && !loggedWaiting) {
+                        if (pendingTotal == 0 && !loggedWaiting) {
+                            // Milestone for field ops + A/B timing comparisons.
+                            Log.i(TAG, "USER all complete (" + tagList.size() + " tags)");
+                            loggedWaiting = true;
+                        } else if (pendingTotal > 0 && !loggedWaiting) {
                             Log.i(TAG, "USER pending: " + pendingTotal
                                     + " tag(s), none in RF range right now");
                             loggedWaiting = true;
@@ -239,9 +256,9 @@ public class InventoryManager {
                     }
                     loggedWaiting = false;
 
-                    for (String epc : batch) {
-                        Integer prev = userFetchAttempts.get(epc);
-                        userFetchAttempts.put(epc, prev == null ? 1 : prev + 1);
+                    for (SDKMethods.reader.MemoryReader.UserReadJob job : batch) {
+                        Integer prev = userFetchAttempts.get(job.epcHex);
+                        userFetchAttempts.put(job.epcHex, prev == null ? 1 : prev + 1);
                     }
 
                     java.util.Map<String, String> results =
@@ -260,16 +277,24 @@ public class InventoryManager {
                     }
 
                     int okCount = 0;
-                    for (java.util.Map.Entry<String, String> entry : results.entrySet()) {
-                        String hex = entry.getValue();
-                        if (hex != null && hex.length() >= 16) {
-                            EPC cur = tagList.get(entry.getKey());
-                            // Richest wins (a full fetch always beats the
-                            // 32-word combined-mode capture it tops up).
-                            if (cur != null && (cur.getUser() == null
-                                    || hex.length() > cur.getUser().length())) {
-                                cur.setUser(hex);
+                    for (SDKMethods.reader.MemoryReader.UserReadJob job : batch) {
+                        String hex = results.get(job.epcHex);
+                        if (hex == null || hex.isEmpty()) continue;
+                        EPC cur = tagList.get(job.epcHex);
+                        if (cur == null) continue;
+                        if (job.startWord > 0) {
+                            // Remainder read: append to the slice it resumed
+                            // from — but only if that slice is still the basis
+                            // (a concurrent capture may have changed it).
+                            String u = cur.getUser();
+                            if (u != null && u.length() / 4 == job.startWord) {
+                                cur.setUser(u + hex);
+                                okCount++;
                             }
+                        } else if (hex.length() >= 16 && (cur.getUser() == null
+                                || hex.length() > cur.getUser().length())) {
+                            // Full read: richest wins.
+                            cur.setUser(hex);
                             okCount++;
                         }
                     }

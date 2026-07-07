@@ -156,6 +156,59 @@ public class UHFManager {
         // (TagFocus/FastID intentionally NOT enabled here — see the note above:
         // they deafen the reader for the non-Impinj tags used in this project.)
 
+        // Diagnostics: current Gen2 + RF link config (baseline for tuning).
+        // Baseline measured 2026-07-07: Gen2 = 0 0 0 1 6 0 15 1 2 1 1 0 0 3
+        // (index 11 = querySession = S0, index 12 = queryTarget = A),
+        // RFLink profile = 2 (PR-ASK/Miller4/300kHz).
+        try {
+            char[] g2 = mReader.getGen2();
+            if (g2 != null) {
+                StringBuilder sb = new StringBuilder();
+                for (char c : g2) sb.append((int) c).append(' ');
+                Log.i(TAG, "Gen2 config [" + g2.length + "]: " + sb.toString().trim());
+
+                // Enforce Gen2 session S0. The module PERSISTS the last-set
+                // session across apps/reboots, and our in-range gating needs
+                // S0's continuous re-sightings. A/B measured 2026-07-07:
+                // S1 => tags go quiet after answering, sighting stamps age
+                // out, top-up batches starve (0/5 with 12s gaps vs steady
+                // 5/5 on S0). Index 11 of the 14-value Gen2 array = session.
+                final int REQUIRED_SESSION = 0;
+                if (g2.length == 14 && g2[11] != REQUIRED_SESSION) {
+                    int[] p = new int[14];
+                    for (int i = 0; i < 14; i++) p[i] = g2[i];
+                    p[11] = REQUIRED_SESSION;
+                    boolean ok = mReader.setGen2(p[0], p[1], p[2], p[3], p[4], p[5], p[6],
+                            p[7], p[8], p[9], p[10], p[11], p[12], p[13]);
+                    char[] verify = mReader.getGen2();
+                    Log.i(TAG, "Gen2 session restored to S0 => " + ok
+                            + ", now session=" + (verify != null && verify.length == 14
+                                    ? (int) verify[11] : -1));
+                }
+            } else {
+                Log.i(TAG, "Gen2 config: null");
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "getGen2 failed: " + e.getMessage());
+        }
+        try {
+            int rfl = mReader.getRFLink();
+            Log.i(TAG, "RFLink profile: " + rfl);
+            // Enforce RF link profile 2 (PR-ASK/Miller4/300kHz) — persisted by
+            // the module like the session. A/B measured 2026-07-07: profile 3
+            // (FM0/400kHz, faster raw rate) makes marginal-signal reads fail
+            // (top-up 0/5 after the strongest tags) — Miller4's noise
+            // robustness is worth more than link speed here.
+            final int REQUIRED_RFLINK = 2;
+            if (rfl != REQUIRED_RFLINK) {
+                boolean ok = mReader.setRFLink(REQUIRED_RFLINK);
+                Log.i(TAG, "RFLink restored to " + REQUIRED_RFLINK + " => " + ok
+                        + ", now=" + mReader.getRFLink());
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "getRFLink failed: " + e.getMessage());
+        }
+
         try {
             int currentPower = mReader.getPower();
             Log.d(TAG, "Current UHF power: " + currentPower + " dBm");
