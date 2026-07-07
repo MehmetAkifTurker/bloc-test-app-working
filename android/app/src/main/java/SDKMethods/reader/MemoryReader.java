@@ -638,6 +638,14 @@ public class MemoryReader {
                 if (chunk != null && (isFirst ? chunk.length() >= 16 : !chunk.isEmpty())) {
                     return chunk;
                 }
+                // Why did the module refuse? errCode distinguishes "tag not
+                // in read range" from protocol/memory errors — key data for
+                // tuning retries in dense fields.
+                try {
+                    Log.d(TAG, "chunk empty (off=" + offset + " n=" + wordCount
+                            + ") errCode=" + reader.getErrCode());
+                } catch (Throwable ignore) {
+                }
             } catch (Exception e) {
                 Log.w(TAG, "Chunk retry " + retry + " failed: " + e.getMessage());
             }

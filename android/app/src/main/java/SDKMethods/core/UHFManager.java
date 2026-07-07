@@ -191,6 +191,11 @@ public class UHFManager {
         } catch (Exception e) {
             Log.w(TAG, "getGen2 failed: " + e.getMessage());
         }
+        // NOTE (probed 2026-07-07): getEPCAndTIDUserModeEx returns rc=-1 with
+        // zeroed arrays on this module/firmware — the Ex-variant inventory
+        // modes (incl. setEPCAndUserReservedModeEx) are NOT supported here.
+        // The 2-param setEPCAndTIDUserMode(user_prt, user_len) is the only
+        // combined-mode control available.
         try {
             int rfl = mReader.getRFLink();
             Log.i(TAG, "RFLink profile: " + rfl);
