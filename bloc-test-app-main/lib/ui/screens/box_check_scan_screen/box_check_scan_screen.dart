@@ -746,39 +746,70 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       top: index == 0 ? const Radius.circular(12) : Radius.zero,
       bottom: index == count - 1 ? const Radius.circular(12) : Radius.zero,
     );
+    // Detail-screen style label/value rows, kept compact so ~5 items fit on
+    // screen at once (single line per value, tight line height).
+    Widget infoRow(String label, String value) => Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 46,
+              child: Text(
+                label,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                    height: 1.4),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                value.trim().isEmpty ? '-' : value.trim(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF1A1A1A),
+                    height: 1.35),
+              ),
+            ),
+          ],
+        );
+
     return ClipRRect(
       borderRadius: radius,
       child: InkWell(
         onTap: () => _openDetail(item),
         child: Container(
           color: ok ? Colors.green.shade50 : Colors.yellow.shade100,
-          padding: const EdgeInsets.symmetric(vertical: 10), // biraz daha nefes
+          padding: const EdgeInsets.symmetric(vertical: 6),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center, // <== dikeyde ortala
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const SizedBox(width: 8),
               CircleAvatar(
-                radius: 16,
+                radius: 14,
                 backgroundColor: ok ? Colors.green : Colors.amber,
                 child: Text(
                   (index + 1).toString(),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 14,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.bold),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("PN: ${item.partNumber}", softWrap: true),
-                      Text("SN: ${item.serialNumber}", softWrap: true),
-                      Text("CAGE: ${item.cage}", softWrap: true),
+                      infoRow("PN", item.partNumber),
+                      infoRow("SN", item.serialNumber),
+                      infoRow("CAGE", item.cage),
                     ],
                   ),
                 ),
@@ -791,36 +822,42 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   }
 
   /// One tappable segment of the count bar (Total / EPC+USER / EPC only).
+  /// Compact single-line layout: icon + count + label.
   Widget _countSegment({
+    required IconData icon,
     required String label,
     required int count,
     required Color color,
     required bool selected,
     required VoidCallback onTap,
   }) {
+    final fg = selected ? Colors.white : color;
     return Expanded(
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
           // ignore: deprecated_member_use
           color: selected ? color : color.withOpacity(0.12),
-          child: Column(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              Icon(icon, size: 14, color: fg),
+              const SizedBox(width: 4),
               Text(
                 "$count",
                 style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: selected ? Colors.white : color),
+                    fontSize: 13.5, fontWeight: FontWeight.w800, color: fg),
               ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                    color: selected ? Colors.white : color),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w600, color: fg),
+                ),
               ),
             ],
           ),
@@ -849,6 +886,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
               child: Row(
                 children: [
                   _countSegment(
+                    icon: Icons.style,
                     label: "Total",
                     count: base.length,
                     color: _brandNavy,
@@ -857,7 +895,8 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
                   ),
                   const SizedBox(width: 2),
                   _countSegment(
-                    label: "EPC + USER",
+                    icon: Icons.done_all,
+                    label: "EPC+USER",
                     count: fullCount,
                     color: Colors.green.shade600,
                     selected: _readStateFilter == true,
@@ -866,6 +905,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
                   ),
                   const SizedBox(width: 2),
                   _countSegment(
+                    icon: Icons.hourglass_bottom,
                     label: "EPC only",
                     count: epcOnlyCount,
                     color: Colors.amber.shade700,
