@@ -1,5 +1,49 @@
 {
-  "cmake.sourceDirectory": "C:/Users/A_TURKER/Desktop/bloc-test-app-main/bloc-test-app-main/windows/flutter",
-  "java.configuration.updateBuildConfiguration": "interactive",
-  "java.compile.nullAnalysis.mode": "automatic"
+  // RFID Manager - IDE Configuration
+  "cmake.sourceDirectory": "C:/Users/A_TURKER/Desktop/bloc-test-app-main/windows/flutter",
+
+  // Completely disable Java Language Server for this Flutter project
+  "java.server.launchMode": "LightWeight",
+  "java.project.sourcePaths": [],
+  "java.configuration.updateBuildConfiguration": "disabled",
+  "java.import.gradle.enabled": false,
+  "java.import.maven.enabled": false,
+  "java.autobuild.enabled": false,
+  "java.project.importOnFirstTimeStartup": "disabled",
+  "java.project.importHint": false,
+  "java.import.exclusions": [
+    "**/android/**"
+  ],
+  "java.jdt.ls.vmargs": "-Xms64m -Xmx256m",
+  "redhat.telemetry.enabled": false,
+  
+  // Exclude build artifacts from file explorer
+  "files.exclude": {
+    "**/build": true,
+    "**/.gradle": true
+  },
+  
+  // Flutter settings
+  "dart.flutterSdkPath": null,
+  "dart.lineLength": 120,
+  
+  // Exclude build artifacts from file watcher
+  "files.watcherExclude": {
+    "**/build/**": true,
+    "**/.dart_tool/**": true,
+    "**/.gradle/**": true
+  },
+  
+  // Code formatting
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "Dart-Code.dart-code",
+  "[dart]": {
+    "editor.formatOnSave": true,
+    "editor.selectionHighlight": false
+  },
+  
+  // Auto-fix on save
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit"
+  }
 }
