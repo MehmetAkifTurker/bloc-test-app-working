@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/ata_constants.dart';
+import 'package:rfid_manager/ui/screens/box_check_scan_screen/ata_constants.dart';
 
 // Theme constants
 const Color _brandNavy = Color(0xFF003B5C);

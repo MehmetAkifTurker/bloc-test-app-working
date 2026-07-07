@@ -3,9 +3,9 @@ import 'dart:developer';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:water_boiler_rfid_labeler/java_comm/rfid_c72_plugin.dart';
-import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
-import 'package:water_boiler_rfid_labeler/ui/screens/tag_write_screen/create_chip_screen.dart';
+import 'package:rfid_manager/java_comm/rfid_c72_plugin.dart';
+import 'package:rfid_manager/ui/router/app_bar.dart';
+import 'package:rfid_manager/ui/screens/tag_write_screen/create_chip_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// ATA Spec 2000 – Table 18 (selected assigned values only).

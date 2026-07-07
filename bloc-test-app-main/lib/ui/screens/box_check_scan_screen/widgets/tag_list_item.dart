@@ -3,7 +3,7 @@
 // Tag list item widget for scan screen
 
 import 'package:flutter/material.dart';
-import 'package:water_boiler_rfid_labeler/models/tag_item.dart';
+import 'package:rfid_manager/models/tag_item.dart';
 
 /// Single tag item in the scan list
 class TagListItem extends StatelessWidget {

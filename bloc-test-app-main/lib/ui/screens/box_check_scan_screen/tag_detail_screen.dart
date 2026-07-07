@@ -2,14 +2,14 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:water_boiler_rfid_labeler/java_comm/rfid_c72_plugin.dart';
-import 'package:water_boiler_rfid_labeler/models/tag_item.dart';
-import 'package:water_boiler_rfid_labeler/models/epc_user_codec.dart';
-import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
-import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/ata_constants.dart';
-import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/widgets/location_status_widget.dart';
-import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/widgets/lifecycle_dialog.dart';
-import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/widgets/record_card_widget.dart';
+import 'package:rfid_manager/java_comm/rfid_c72_plugin.dart';
+import 'package:rfid_manager/models/tag_item.dart';
+import 'package:rfid_manager/models/epc_user_codec.dart';
+import 'package:rfid_manager/ui/router/app_bar.dart';
+import 'package:rfid_manager/ui/screens/box_check_scan_screen/ata_constants.dart';
+import 'package:rfid_manager/ui/screens/box_check_scan_screen/widgets/location_status_widget.dart';
+import 'package:rfid_manager/ui/screens/box_check_scan_screen/widgets/lifecycle_dialog.dart';
+import 'package:rfid_manager/ui/screens/box_check_scan_screen/widgets/record_card_widget.dart';
 
 class TagDetailScreen extends StatefulWidget {
   final TagItem tagItem;

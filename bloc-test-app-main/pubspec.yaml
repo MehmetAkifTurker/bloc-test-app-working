@@ -1,4 +1,4 @@
-name: water_boiler_rfid_labeler
+name: rfid_manager
 description: "RFID Manager is a professional Flutter application for Turkish Airlines to read, write, and manage RFID tags compliant with ATA Spec 2000. Supports single, dual, and multi-record tags with lifecycle management capabilities."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.

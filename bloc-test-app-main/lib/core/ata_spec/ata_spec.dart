@@ -9,6 +9,6 @@ export 'epc_decoder.dart';
 
 // USER Memory decoder is still in the legacy location
 // Will be migrated in a future update
-export 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/epc_user_codec.dart'
+export 'package:rfid_manager/ui/screens/box_check_scan_screen/epc_user_codec.dart'
     show decodeUserMemory, AtaTocHeader, AtaRecordDescriptor, AtaDecodedRecord;
 

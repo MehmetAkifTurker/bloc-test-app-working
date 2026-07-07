@@ -3,11 +3,11 @@
 // Shared Constants - Barrel Export
 
 // Theme constants
-export 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/theme_constants.dart';
+export 'package:rfid_manager/ui/screens/box_check_scan_screen/theme_constants.dart';
 
 // ATA constants (from core)
-export 'package:water_boiler_rfid_labeler/core/ata_spec/record_types.dart';
+export 'package:rfid_manager/core/ata_spec/record_types.dart';
 
 // Filter options
-export 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/filter_options.dart';
+export 'package:rfid_manager/ui/screens/box_check_scan_screen/filter_options.dart';
 

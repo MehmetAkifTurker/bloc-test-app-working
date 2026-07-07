@@ -3,7 +3,7 @@
 
 import 'dart:convert';
 
-import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/epc_user_codec.dart';
+import 'package:rfid_manager/ui/screens/box_check_scan_screen/epc_user_codec.dart';
 
 void main(List<String> args) {
   if (args.isEmpty) {

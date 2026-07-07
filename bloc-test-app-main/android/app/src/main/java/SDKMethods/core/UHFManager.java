@@ -4,7 +4,7 @@ import android.content.Context;
 import android.media.MediaPlayer;
 import android.util.Log;
 
-import com.example.water_boiler_rfid_labeler.R;
+import com.example.rfid_manager.R;
 import com.rscja.barcode.BarcodeDecoder;
 import com.rscja.barcode.BarcodeFactory;
 import com.rscja.barcode.BarcodeUtility;

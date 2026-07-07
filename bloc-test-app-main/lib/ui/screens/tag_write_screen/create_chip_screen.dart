@@ -1,6 +1,6 @@
 // Create Chip Screen - ATA Spec 2000 Tag Type Configuration
 import 'package:flutter/material.dart';
-import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
+import 'package:rfid_manager/ui/router/app_bar.dart';
 
 /// Tag Type model for chip configuration
 class TagType {

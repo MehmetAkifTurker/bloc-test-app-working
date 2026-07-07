@@ -1,12 +1,12 @@
 // import 'dart:developer';
 
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/db_tag/db_tag_bloc.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/db_tag/db_tag_event.dart';
-// import 'package:water_boiler_rfid_labeler/data/models/db_tag.dart';
-// import 'package:water_boiler_rfid_labeler/data/models/optimized_tag_box_scan.dart';
-// import 'package:water_boiler_rfid_labeler/data/models/optimized_tag_rfid_scan.dart';
-// import 'package:water_boiler_rfid_labeler/data/models/tag_epc.dart';
-// import 'package:water_boiler_rfid_labeler/ui/screens/rfid_db_tag_list_screen/_rfid_db_tag_list_methods.dart';
+// import 'package:rfid_manager/business_logic/blocs/db_tag/db_tag_bloc.dart';
+// import 'package:rfid_manager/business_logic/blocs/db_tag/db_tag_event.dart';
+// import 'package:rfid_manager/data/models/db_tag.dart';
+// import 'package:rfid_manager/data/models/optimized_tag_box_scan.dart';
+// import 'package:rfid_manager/data/models/optimized_tag_rfid_scan.dart';
+// import 'package:rfid_manager/data/models/tag_epc.dart';
+// import 'package:rfid_manager/ui/screens/rfid_db_tag_list_screen/_rfid_db_tag_list_methods.dart';
 // import 'package:flutter/material.dart';
 // import 'package:flutter_bloc/flutter_bloc.dart';
 // import 'package:font_awesome_flutter/font_awesome_flutter.dart';

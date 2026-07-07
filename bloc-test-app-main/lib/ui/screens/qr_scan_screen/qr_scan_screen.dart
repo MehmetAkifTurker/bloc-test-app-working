@@ -2,8 +2,8 @@
 // import 'dart:async';
 // import 'package:flutter/material.dart';
 // import 'package:flutter/services.dart';
-// import 'package:water_boiler_rfid_labeler/java_comm/rfid_c72_plugin.dart';
-// import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
+// import 'package:rfid_manager/java_comm/rfid_c72_plugin.dart';
+// import 'package:rfid_manager/ui/router/app_bar.dart';
 
 // class QrScanScreen extends StatefulWidget {
 //   const QrScanScreen({Key? key}) : super(key: key);
@@ -262,8 +262,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:water_boiler_rfid_labeler/java_comm/rfid_c72_plugin.dart';
-import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
+import 'package:rfid_manager/java_comm/rfid_c72_plugin.dart';
+import 'package:rfid_manager/ui/router/app_bar.dart';
 
 class QrScanScreen extends StatefulWidget {
   const QrScanScreen({super.key});

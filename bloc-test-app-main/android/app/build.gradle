@@ -26,7 +26,7 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace "com.example.water_boiler_rfid_labeler"
+    namespace "com.example.rfid_manager"
     compileSdk flutter.compileSdkVersion
     ndkVersion = "26.1.10909125"
     compileSdkVersion 36
@@ -49,7 +49,7 @@ android {
 
     defaultConfig {
         // Application ID (package name)
-        applicationId "com.example.water_boiler_rfid_labeler"
+        applicationId "com.example.rfid_manager"
         // RFID Manager - Turkish Airlines
         // ATA Spec 2000 compliant RFID tag management
         minSdkVersion 23

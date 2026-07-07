@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:developer';
 import 'package:flutter/material.dart';
-import 'package:water_boiler_rfid_labeler/java_comm/rfid_c72_plugin.dart';
+import 'package:rfid_manager/java_comm/rfid_c72_plugin.dart';
 
 class DiagnosticScreen extends StatefulWidget {
   const DiagnosticScreen({super.key});

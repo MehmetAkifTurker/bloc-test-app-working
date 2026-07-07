@@ -1,6 +1,6 @@
-import 'package:water_boiler_rfid_labeler/data/models/variables.dart';
+import 'package:rfid_manager/data/models/variables.dart';
 import 'package:flutter/material.dart';
-import 'package:water_boiler_rfid_labeler/ui/router/app_router.dart'; // pageNames için
+import 'package:rfid_manager/ui/router/app_router.dart'; // pageNames için
 
 AppBar commonAppBar(BuildContext context, String title,
     {bool showBack = false, VoidCallback? onBack}) {

@@ -1,18 +1,18 @@
 // import 'dart:async';
 // import 'dart:developer';
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/box_check/box_check_bloc.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/db_filtering_bloc/bloc/db_filtering_bloc.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/db_tag/db_tag_bloc.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/db_tag/db_tag_event.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/db_tag_popup/db_tag_popup_cubit.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/rfid_tag/rfid_tag_bloc.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/cubit/navigaion_qubit_cubit.dart';
-// import 'package:water_boiler_rfid_labeler/data/repositories/rfid_tag_repository.dart';
-// import 'package:water_boiler_rfid_labeler/firebase_options.dart';
-// import 'package:water_boiler_rfid_labeler/java_comm/rfid_c72_plugin.dart';
-// import 'package:water_boiler_rfid_labeler/ui/router/app_router.dart';
-// import 'package:water_boiler_rfid_labeler/ui/screens/main_menu/main_menu.dart';
-// import 'package:water_boiler_rfid_labeler/ui/screens/splash_screen/splash_screen.dart';
+// import 'package:rfid_manager/business_logic/blocs/box_check/box_check_bloc.dart';
+// import 'package:rfid_manager/business_logic/blocs/db_filtering_bloc/bloc/db_filtering_bloc.dart';
+// import 'package:rfid_manager/business_logic/blocs/db_tag/db_tag_bloc.dart';
+// import 'package:rfid_manager/business_logic/blocs/db_tag/db_tag_event.dart';
+// import 'package:rfid_manager/business_logic/blocs/db_tag_popup/db_tag_popup_cubit.dart';
+// import 'package:rfid_manager/business_logic/blocs/rfid_tag/rfid_tag_bloc.dart';
+// import 'package:rfid_manager/business_logic/cubit/navigaion_qubit_cubit.dart';
+// import 'package:rfid_manager/data/repositories/rfid_tag_repository.dart';
+// import 'package:rfid_manager/firebase_options.dart';
+// import 'package:rfid_manager/java_comm/rfid_c72_plugin.dart';
+// import 'package:rfid_manager/ui/router/app_router.dart';
+// import 'package:rfid_manager/ui/screens/main_menu/main_menu.dart';
+// import 'package:rfid_manager/ui/screens/splash_screen/splash_screen.dart';
 // import 'package:firebase_core/firebase_core.dart';
 // import 'package:flutter/material.dart';
 // import 'package:flutter_bloc/flutter_bloc.dart';
@@ -95,18 +95,18 @@
 // import 'package:flutter_bloc/flutter_bloc.dart';
 // import 'package:firebase_core/firebase_core.dart';
 
-// import 'package:water_boiler_rfid_labeler/firebase_options.dart';
-// import 'package:water_boiler_rfid_labeler/ui/router/app_router.dart';
-// import 'package:water_boiler_rfid_labeler/ui/screens/main_menu/main_menu.dart';
+// import 'package:rfid_manager/firebase_options.dart';
+// import 'package:rfid_manager/ui/router/app_router.dart';
+// import 'package:rfid_manager/ui/screens/main_menu/main_menu.dart';
 
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/box_check/box_check_bloc.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/db_filtering_bloc/bloc/db_filtering_bloc.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/db_tag/db_tag_bloc.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/db_tag/db_tag_event.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/db_tag_popup/db_tag_popup_cubit.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/blocs/rfid_tag/rfid_tag_bloc.dart';
-// import 'package:water_boiler_rfid_labeler/business_logic/cubit/navigaion_qubit_cubit.dart';
-// import 'package:water_boiler_rfid_labeler/data/repositories/rfid_tag_repository.dart';
+// import 'package:rfid_manager/business_logic/blocs/box_check/box_check_bloc.dart';
+// import 'package:rfid_manager/business_logic/blocs/db_filtering_bloc/bloc/db_filtering_bloc.dart';
+// import 'package:rfid_manager/business_logic/blocs/db_tag/db_tag_bloc.dart';
+// import 'package:rfid_manager/business_logic/blocs/db_tag/db_tag_event.dart';
+// import 'package:rfid_manager/business_logic/blocs/db_tag_popup/db_tag_popup_cubit.dart';
+// import 'package:rfid_manager/business_logic/blocs/rfid_tag/rfid_tag_bloc.dart';
+// import 'package:rfid_manager/business_logic/cubit/navigaion_qubit_cubit.dart';
+// import 'package:rfid_manager/data/repositories/rfid_tag_repository.dart';
 
 // Future<void> main() async {
 //   WidgetsFlutterBinding.ensureInitialized();
@@ -178,8 +178,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:water_boiler_rfid_labeler/ui/router/app_router.dart';
-import 'package:water_boiler_rfid_labeler/ui/screens/main_menu/main_menu.dart';
+import 'package:rfid_manager/ui/router/app_router.dart';
+import 'package:rfid_manager/ui/screens/main_menu/main_menu.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

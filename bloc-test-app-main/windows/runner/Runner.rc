@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "water_boiler_rfid_labeler" "\0"
+            VALUE "FileDescription", "rfid_manager" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "water_boiler_rfid_labeler" "\0"
+            VALUE "InternalName", "rfid_manager" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2024 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "water_boiler_rfid_labeler.exe" "\0"
-            VALUE "ProductName", "water_boiler_rfid_labeler" "\0"
+            VALUE "OriginalFilename", "rfid_manager.exe" "\0"
+            VALUE "ProductName", "rfid_manager" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

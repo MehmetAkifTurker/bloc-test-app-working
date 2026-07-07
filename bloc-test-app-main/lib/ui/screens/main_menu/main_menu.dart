@@ -1,6 +1,6 @@
 // import 'dart:ui' show ImageFilter;
 // import 'package:flutter/material.dart';
-// import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
+// import 'package:rfid_manager/ui/router/app_bar.dart';
 
 // class MainMenu extends StatefulWidget {
 //   const MainMenu({Key? key}) : super(key: key);
@@ -124,7 +124,7 @@
 // }
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
+import 'package:rfid_manager/ui/router/app_bar.dart';
 
 class MainMenu extends StatefulWidget {
   const MainMenu({super.key});

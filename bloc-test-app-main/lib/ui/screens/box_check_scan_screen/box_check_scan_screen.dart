@@ -4,13 +4,13 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 
-import 'package:water_boiler_rfid_labeler/java_comm/rfid_c72_plugin.dart';
-import 'package:water_boiler_rfid_labeler/models/tag_item.dart';
-import 'package:water_boiler_rfid_labeler/ui/router/app_bar.dart';
-import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/epc_user_codec.dart';
-import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/tag_detail_screen.dart';
-import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/filter_options.dart';
-import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/excel_export_helper.dart';
+import 'package:rfid_manager/java_comm/rfid_c72_plugin.dart';
+import 'package:rfid_manager/models/tag_item.dart';
+import 'package:rfid_manager/ui/router/app_bar.dart';
+import 'package:rfid_manager/ui/screens/box_check_scan_screen/epc_user_codec.dart';
+import 'package:rfid_manager/ui/screens/box_check_scan_screen/tag_detail_screen.dart';
+import 'package:rfid_manager/ui/screens/box_check_scan_screen/filter_options.dart';
+import 'package:rfid_manager/ui/screens/box_check_scan_screen/excel_export_helper.dart';
 
 class BoxCheckScanScreen extends StatelessWidget {
   const BoxCheckScanScreen({super.key});

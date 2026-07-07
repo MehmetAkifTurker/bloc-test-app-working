@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:850006190065:android:57bec094944e15a5dcc650",
         "android_client_info": {
-          "package_name": "com.example.water_boiler_rfid_labeler"
+          "package_name": "com.example.rfid_manager"
         }
       },
       "oauth_client": [],

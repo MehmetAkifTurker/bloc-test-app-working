@@ -1,8 +1,8 @@
 // import 'dart:developer';
 
-// import 'package:water_boiler_rfid_labeler/business_logic/cubit/navigaion_qubit_cubit.dart';
-// import 'package:water_boiler_rfid_labeler/data/models/variables.dart';
-// import 'package:water_boiler_rfid_labeler/ui/router/app_router.dart';
+// import 'package:rfid_manager/business_logic/cubit/navigaion_qubit_cubit.dart';
+// import 'package:rfid_manager/data/models/variables.dart';
+// import 'package:rfid_manager/ui/router/app_router.dart';
 // import 'package:flutter/material.dart';
 // import 'package:flutter_bloc/flutter_bloc.dart';
 
