@@ -657,6 +657,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     }
 
     final hasPayload = payloadText.isNotEmpty || decodedFields.isNotEmpty;
+    // Only give records a dedicated section when some were actually decoded.
+    // Legacy / short-ToC tags can DECLARE a Dual/Multi tag type in their ToC
+    // while carrying a single combined payload with no Record Descriptors;
+    // without this gate they'd render an empty records section and the decoded
+    // USER fields would never be shown.
+    final recordsList = decodedUser['records'];
+    final hasRecords = recordsList is List && recordsList.isNotEmpty;
     final epcText = widget.tagItem.rawEpc;
     final userText = _userHex;
     return Scaffold(
@@ -708,9 +715,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
           const SizedBox(height: 16),
 
-          // For Dual/Multi-Record tags, show records separately
-          if (_isDualRecordTag(decodedUser) ||
-              _hasMultipleRecords(decodedUser)) ...[
+          // For Dual/Multi-Record tags, show records separately — but only when
+          // records were actually decoded; otherwise fall back to the combined
+          // payload below so short-ToC/single tags still show their USER fields.
+          if (hasRecords &&
+              (_isDualRecordTag(decodedUser) ||
+                  _hasMultipleRecords(decodedUser))) ...[
             RecordSectionsWidget(decodedUser: decodedUser),
             const SizedBox(height: 16),
           ] else if (hasPayload) ...[
