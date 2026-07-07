@@ -123,23 +123,22 @@ public class UHFManager {
         }
 
         try {
-            // Configure EPC+TID+USER simultaneous reading
-            // FIRST PARAM (tidLen): TID words to read during inventory
-            // SECOND PARAM (totalLen): TOTAL words for EPC+TID+USER combined
-            // Try progressively: 10w/64 → 6w/64 → 6w/32 → 0w/32
-            boolean allModeSet = mReader.setEPCAndTIDUserMode(10, 64);
+            // Configure EPC+TID+USER simultaneous reading.
+            // SDK javadoc (IUHF.setEPCAndTIDUserMode): param1 = user_prt (START
+            // ADDRESS in the USER bank), param2 = user_len (word count). ATA
+            // Spec 2000 data starts at USER word 0 (DSFID 0x1E00), so start=0.
+            // The old call here used (10, 64) — reading from word 10 runs past
+            // the end of small (33-word) tags, which is why combined-mode
+            // inventory never delivered USER and everything fell back to
+            // pause-and-read fetching. 32 words covers the ToC header + first
+            // records; bigger tags are topped up by the background fetcher.
+            boolean allModeSet = mReader.setEPCAndTIDUserMode(0, 32);
             if (allModeSet) {
-                Log.i(TAG, "✓ EPC+TID(10w)+USER mode configured (total=64)");
+                Log.i(TAG, "✓ EPC+TID+USER(start=0,len=32) mode configured");
             } else {
-                allModeSet = mReader.setEPCAndTIDUserMode(6, 64);
-                if (!allModeSet) {
-                    allModeSet = mReader.setEPCAndTIDUserMode(6, 32);
-                }
-                if (!allModeSet) {
-                    allModeSet = mReader.setEPCAndTIDUserMode(0, 32);
-                }
+                allModeSet = mReader.setEPCAndTIDUserMode(0, 12);
                 if (allModeSet) {
-                    Log.i(TAG, "✓ EPC+TID(fallback)+USER mode configured");
+                    Log.i(TAG, "✓ EPC+TID+USER(start=0,len=12) fallback configured");
                 } else {
                     Log.w(TAG, "⚠ All combined modes failed - using default");
                 }

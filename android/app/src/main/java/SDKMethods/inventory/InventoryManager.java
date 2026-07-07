@@ -209,7 +209,7 @@ public class InventoryManager {
                     for (EPC t : tagList.values()) {
                         String u = t.getUser();
                         String epcKey = t.getEpc();
-                        if ((u == null || u.isEmpty()) && epcKey != null && !epcKey.isEmpty()) {
+                        if (needsUserFetch(u) && epcKey != null && !epcKey.isEmpty()) {
                             pendingTotal++;
                             Integer tries = userFetchAttempts.get(epcKey);
                             if (tries != null && tries >= maxAttempts) continue;
@@ -264,7 +264,12 @@ public class InventoryManager {
                         String hex = entry.getValue();
                         if (hex != null && hex.length() >= 16) {
                             EPC cur = tagList.get(entry.getKey());
-                            if (cur != null) cur.setUser(hex);
+                            // Richest wins (a full fetch always beats the
+                            // 32-word combined-mode capture it tops up).
+                            if (cur != null && (cur.getUser() == null
+                                    || hex.length() > cur.getUser().length())) {
+                                cur.setUser(hex);
+                            }
                             okCount++;
                         }
                     }
@@ -323,7 +328,8 @@ public class InventoryManager {
             // Toggle combined mode OFF then ON (same as "reset" in demo app)
             try { reader.setEPCAndTIDMode(); } catch (Exception ignore) {}
             try { Thread.sleep(15); } catch (Exception ignore) {}
-            try { reader.setEPCAndTIDUserMode(10, 64); } catch (Exception ignore) {}
+            // user_prt=0, user_len=32 (see UHFManager)
+            try { reader.setEPCAndTIDUserMode(0, 32); } catch (Exception ignore) {}
             
             UHFTAGInfo info = reader.inventorySingleTag();
             if (info == null) return "";
@@ -347,7 +353,8 @@ public class InventoryManager {
                     ",\"userMemory\":\"" + userMemory + "\"}";
         } catch (Exception e) {
             Log.e(TAG, "Error in readSingleTagBasicJson: " + e.getMessage());
-            try { reader.setEPCAndTIDUserMode(10, 64); } catch (Exception ignore) {}
+            // user_prt=0, user_len=32 (see UHFManager)
+            try { reader.setEPCAndTIDUserMode(0, 32); } catch (Exception ignore) {}
             return "";
         }
     }
@@ -502,14 +509,18 @@ public class InventoryManager {
         tag.setValidTid(isTidValid(bestTid));
 
         if (!user.isEmpty()) {
-            // Log the first time USER data arrives for a tag (combined-mode capture).
-            boolean hadUser = existing != null && existing.getUser() != null
-                    && !existing.getUser().isEmpty();
+            String prevUser = tag.getUser();
+            boolean hadUser = prevUser != null && !prevUser.isEmpty();
             if (!hadUser) {
+                // Log the first time USER data arrives for a tag (combined-mode capture).
                 Log.i(TAG, "USER captured: EPC=" + epc.substring(0, Math.min(16, epc.length()))
                         + "... words=" + (user.length() / 4));
             }
-            tag.setUser(user);                        // else keep previously captured USER
+            // Richest wins: the combined-mode capture is capped at 32 words, so
+            // never let it overwrite a longer background-fetched USER.
+            if (!hadUser || user.length() > prevUser.length()) {
+                tag.setUser(user);
+            }
         }
 
         int oldCount = 0;
@@ -554,6 +565,18 @@ public class InventoryManager {
     }
 
     // ==================== HELPERS ====================
+
+    /**
+     * A tag still needs a background USER read if it has no USER at all, or
+     * only the 32-word combined-mode capture of a larger memory (the ATA ToC
+     * header declares the real size — top up the rest).
+     */
+    private boolean needsUserFetch(String userHex) {
+        if (userHex == null || userHex.isEmpty()) return true;
+        if (userHex.length() < 16) return true; // no full ToC header captured
+        int declaredWords = SDKMethods.reader.MemoryReader.parseTargetWords(userHex);
+        return declaredWords > userHex.length() / 4;
+    }
 
     private boolean isTidValid(String tid) {
         // Accept TIDs of various lengths - different tags have different TID sizes

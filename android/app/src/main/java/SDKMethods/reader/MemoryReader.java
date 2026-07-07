@@ -598,7 +598,7 @@ public class MemoryReader {
      * Word 2: Flags[15:8] | Size of ToC Header[7:4] | Size of RDs[3:0]
      * Word 3: Size of ATA Memory (16 or 32 bit)
      */
-    private int parseTargetWords(String firstChunk) {
+    public static int parseTargetWords(String firstChunk) {
         int maxWords = MAX_USER_WORDS; // ATA Spec DRT max 1024
         try {
             if (firstChunk.length() >= 16) {
