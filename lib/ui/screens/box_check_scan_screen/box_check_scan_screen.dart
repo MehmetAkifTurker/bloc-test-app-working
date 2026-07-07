@@ -678,9 +678,27 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
                   max: _maxPower,
                   divisions: _divisions,
                   onChanged: (v) => setState(() => _powerLevel = v),
-                  onChangeEnd: (v) {
-                    RfidC72Plugin.setPowerLevel(v.toInt().toString());
-                    log("Power level set to ${v.toInt()}");
+                  onChangeEnd: (v) async {
+                    // Native pauses inventory, sets, verifies with retries.
+                    final ok =
+                        await RfidC72Plugin.setPowerLevel(v.toInt().toString());
+                    // Snap the slider to the module's REAL power so the UI
+                    // never claims a level the hardware didn't accept.
+                    final raw = await RfidC72Plugin.getPowerLevel;
+                    final actual = int.tryParse(raw ?? '');
+                    if (!mounted) return;
+                    if (actual != null &&
+                        actual >= _minPower &&
+                        actual <= _maxPower &&
+                        actual != v.toInt()) {
+                      setState(() => _powerLevel = actual.toDouble());
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(
+                            "Power: module reports $actual dBm (asked ${v.toInt()})"),
+                        duration: const Duration(seconds: 2),
+                      ));
+                    }
+                    log("Power level set to ${v.toInt()} (ok=$ok, actual=$actual)");
                   },
                 ),
               ),

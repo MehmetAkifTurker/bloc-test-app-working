@@ -110,8 +110,60 @@ public class UHFHelper {
 
     // ==================== POWER & FREQUENCY ====================
 
+    /**
+     * Set RF power with verification. setPower() silently fails (or getPower()
+     * returns -1) while the module is busy with inventory start/stop
+     * transitions — including the background USER-fetch thread's pause/resume
+     * cycles. So: pause a running inventory, set + verify with retries, then
+     * resume. Returns true only if the read-back power matches.
+     */
     public boolean setPowerLevel(String level) {
-        return UHFManager.getInstance().setPowerLevel(level);
+        int pwr;
+        try {
+            pwr = Integer.parseInt(level);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        com.rscja.deviceapi.RFIDWithUHFUART reader = UHFManager.getInstance().getReader();
+        if (reader == null) return false;
+
+        boolean wasRunning = InventoryManager.getInstance().isStarted();
+        try {
+            if (wasRunning) {
+                try {
+                    reader.stopInventory();
+                    Thread.sleep(80);
+                } catch (Exception ignore) {
+                }
+            }
+            for (int attempt = 0; attempt < 3; attempt++) {
+                UHFManager.getInstance().setPowerLevel(level);
+                int actual = -1;
+                try {
+                    actual = reader.getPower();
+                } catch (Exception ignore) {
+                }
+                if (actual == pwr) {
+                    return true;
+                }
+                android.util.Log.w("UHFHelper", "setPower verify failed (want " + pwr
+                        + ", got " + actual + "), attempt " + (attempt + 1));
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+            return false;
+        } finally {
+            if (wasRunning && InventoryManager.getInstance().isStarted()) {
+                try {
+                    reader.startInventoryTag();
+                } catch (Exception ignore) {
+                }
+            }
+        }
     }
 
     public String getPowerLevel() {
