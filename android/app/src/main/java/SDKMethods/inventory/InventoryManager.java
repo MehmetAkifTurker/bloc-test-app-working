@@ -154,11 +154,12 @@ public class InventoryManager {
      * this reader/tag combination (buffer entries always carry USER=0 words),
      * so USER used to be read only when the detail screen opened. This thread
      * fills USER memory IN THE BACKGROUND while continuous inventory runs:
-     * it picks one tag at a time that has no USER yet and reads it with an
-     * EPC-filtered chunked read (readUserMemoryForEpcFull pauses/resumes the
-     * inventory internally), then stores the hex on the tag entry so the
-     * Flutter poll picks it up. 3 attempts per tag so unreadable ones don't
-     * loop forever.
+     * it collects a BATCH of tags that have no USER yet and reads them with
+     * EPC-filtered chunked reads in a single inventory pause (see
+     * readUserMemoryForEpcsBatch), then stores the hex on the tag entries so
+     * the Flutter poll picks them up. Attempt caps keep unreadable tags from
+     * looping forever: 1 try in normal mode, 3 in priority mode (counters
+     * reset when priority is switched on).
      *
      * Each fetch stops the inventory for ~0.3-0.7s, so fetching while the
      * operator is still discovering tags collapses EPC throughput (measured:
@@ -185,33 +186,42 @@ public class InventoryManager {
                     }
                     loggedWaiting = false;
 
-                    EPC pending = null;
+                    // Batch: one inventory pause serves several tags, so the
+                    // dominant stop/start overhead is amortized. Normal mode
+                    // keeps batches small (discovery stays responsive) and
+                    // spends only 1 attempt per tag; priority mode ("EPC only"
+                    // tapped) reads bigger batches with 3 attempts.
+                    int maxAttempts = userFetchPriority ? 3 : 1;
+                    int batchLimit = userFetchPriority ? 10 : 5;
+                    java.util.List<String> batch = new java.util.ArrayList<>();
                     for (EPC t : tagList.values()) {
                         String u = t.getUser();
                         String epcKey = t.getEpc();
                         if ((u == null || u.isEmpty()) && epcKey != null && !epcKey.isEmpty()) {
                             Integer tries = userFetchAttempts.get(epcKey);
-                            if (tries == null || tries < 3) {
-                                pending = t;
-                                break;
+                            if (tries == null || tries < maxAttempts) {
+                                batch.add(epcKey);
+                                if (batch.size() >= batchLimit) break;
                             }
                         }
                     }
-                    if (pending == null) {
+                    if (batch.isEmpty()) {
                         Thread.sleep(500);
                         continue;
                     }
 
-                    String epc = pending.getEpc();
-                    Integer prev = userFetchAttempts.get(epc);
-                    userFetchAttempts.put(epc, prev == null ? 1 : prev + 1);
+                    for (String epc : batch) {
+                        Integer prev = userFetchAttempts.get(epc);
+                        userFetchAttempts.put(epc, prev == null ? 1 : prev + 1);
+                    }
 
-                    String hex = SDKMethods.reader.MemoryReader.getInstance()
-                            .readUserMemoryForEpcFull(epc);
+                    java.util.Map<String, String> results =
+                            SDKMethods.reader.MemoryReader.getInstance()
+                                    .readUserMemoryForEpcsBatch(batch);
 
                     if (!isStart) {
-                        // User pressed Stop mid-fetch; the fetch restored the
-                        // inventory it had paused — make sure it is stopped.
+                        // User pressed Stop mid-batch; the batch already skips
+                        // restarting the inventory — make sure it is stopped.
                         try {
                             RFIDWithUHFUART r = UHFManager.getInstance().getReader();
                             if (r != null) r.stopInventory();
@@ -220,14 +230,18 @@ public class InventoryManager {
                         break;
                     }
 
-                    if (hex != null && hex.length() >= 16) {
-                        EPC cur = tagList.get(epc);
-                        if (cur != null) cur.setUser(hex);
-                        Log.i(TAG, "USER fetched: EPC="
-                                + epc.substring(0, Math.min(16, epc.length()))
-                                + "... words=" + (hex.length() / 4));
+                    int okCount = 0;
+                    for (java.util.Map.Entry<String, String> entry : results.entrySet()) {
+                        String hex = entry.getValue();
+                        if (hex != null && hex.length() >= 16) {
+                            EPC cur = tagList.get(entry.getKey());
+                            if (cur != null) cur.setUser(hex);
+                            okCount++;
+                        }
                     }
-                    Thread.sleep(50); // field is quiet — short breather, fetch fast
+                    Log.i(TAG, "USER batch: " + okCount + "/" + batch.size() + " fetched"
+                            + (userFetchPriority ? " (priority)" : ""));
+                    Thread.sleep(50); // short breather between batches
                 } catch (InterruptedException e) {
                     break;
                 } catch (Exception e) {

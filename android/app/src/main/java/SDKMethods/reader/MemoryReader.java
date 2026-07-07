@@ -106,6 +106,61 @@ public class MemoryReader {
         }
     }
 
+    /**
+     * Batch variant of {@link #readUserMemoryForEpcFull}: pauses the inventory
+     * ONCE, reads USER for every EPC in the list back-to-back, then resumes.
+     * Amortizes the stop/start overhead that dominates per-tag fetch time when
+     * many tags are pending. Aborts remaining EPCs if the scan is stopped
+     * mid-batch (and then does not restart the inventory).
+     *
+     * @return EPC -> USER hex ("" for EPCs whose read failed); EPCs after an
+     *         abort are absent.
+     */
+    public synchronized java.util.Map<String, String> readUserMemoryForEpcsBatch(
+            java.util.List<String> epcs) {
+        java.util.Map<String, String> out = new java.util.HashMap<>();
+        RFIDWithUHFUART reader = UHFManager.getInstance().getReader();
+        if (reader == null || epcs == null || epcs.isEmpty())
+            return out;
+
+        boolean wasRunning = InventoryManager.getInstance().isStarted();
+        try {
+            if (wasRunning) {
+                reader.stopInventory();
+                Thread.sleep(80);
+            }
+            UHFManager.getInstance().clearFilter();
+
+            for (String epcHex : epcs) {
+                if (epcHex == null || epcHex.isEmpty())
+                    continue;
+                if (wasRunning && !InventoryManager.getInstance().isStarted())
+                    break; // user pressed Stop mid-batch
+                try {
+                    int epcBits = epcHex.length() * 4;
+                    String result = readUserMemoryChunked(reader,
+                            RFIDWithUHFUART.Bank_EPC, 32, epcBits, epcHex, 40, 20, 15);
+                    out.put(epcHex, result != null ? result : "");
+                    Thread.sleep(15); // brief gap between tags within the batch
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (Exception e) {
+                    out.put(epcHex, "");
+                }
+            }
+            return out;
+
+        } catch (Exception e) {
+            Log.e(TAG, "EPC batch read error: " + e.getMessage());
+            return out;
+        } finally {
+            UHFManager.getInstance().clearFilter();
+            // Only resume if the scan is still supposed to be running.
+            restoreInventory(wasRunning && InventoryManager.getInstance().isStarted());
+        }
+    }
+
     // ==================== TID FILTERED READ ====================
 
     // SDK LIMITATION: Maximum TID filter is 32 characters (128 bits)
