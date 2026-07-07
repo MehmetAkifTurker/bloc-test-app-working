@@ -132,9 +132,14 @@ public class UHFManager {
             // inventory never delivered USER and everything fell back to
             // pause-and-read fetching. 32 words covers the ToC header + first
             // records; bigger tags are topped up by the background fetcher.
-            boolean allModeSet = mReader.setEPCAndTIDUserMode(0, 32);
+            // len=16 (not 32): a shorter in-inventory read completes at longer
+            // range — with 32 words the simultaneous capture only worked at
+            // desk distance (0/44 at ~1-2m field distance). 16 words still
+            // contains the full ToC header, so needsUserFetch() tops up the
+            // rest in the background.
+            boolean allModeSet = mReader.setEPCAndTIDUserMode(0, 16);
             if (allModeSet) {
-                Log.i(TAG, "✓ EPC+TID+USER(start=0,len=32) mode configured");
+                Log.i(TAG, "✓ EPC+TID+USER(start=0,len=16) mode configured");
             } else {
                 allModeSet = mReader.setEPCAndTIDUserMode(0, 12);
                 if (allModeSet) {
