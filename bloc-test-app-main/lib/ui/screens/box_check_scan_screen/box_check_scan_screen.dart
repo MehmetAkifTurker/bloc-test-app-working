@@ -100,21 +100,23 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       );
       return;
     }
-    await _syncPowerFromReader();
+    await _applyInitialPower();
   }
 
-  /// The slider used to start at a hardcoded 5 dBm while the module kept its
-  /// real (persisted) power — so the UI could show 5 while reading at 18+.
-  /// Read the ACTUAL power from the module and reflect it in the slider.
-  Future<void> _syncPowerFromReader() async {
+  /// On screen open the power must BE the slider's default (5 dBm) — not just
+  /// look like it. The module persists its last-set power (e.g. 30 dBm from a
+  /// previous session), so we SET the default explicitly, then read it back so
+  /// the slider always shows the module's real value.
+  Future<void> _applyInitialPower() async {
     try {
+      await RfidC72Plugin.setPowerLevel(_powerLevel.toInt().toString());
       final raw = await RfidC72Plugin.getPowerLevel;
       final actual = int.tryParse(raw?.trim() ?? '');
-      if (actual == null) return;
-      final clamped = actual.clamp(5, 30).toDouble();
-      if (mounted) setState(() => _powerLevel = clamped);
+      if (actual != null && mounted) {
+        setState(() => _powerLevel = actual.clamp(5, 30).toDouble());
+      }
     } catch (_) {
-      // Keep the current slider value if the query fails.
+      // Keep the current slider value if the module can't be reached.
     }
   }
 
