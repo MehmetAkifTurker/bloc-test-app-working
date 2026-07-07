@@ -56,11 +56,19 @@ public class InventoryManager {
     private static final long FETCH_RETRY_COOLDOWN_MS = 2000;
     private final java.util.concurrent.ConcurrentHashMap<String, Long> lastFetchAttemptMs =
             new java.util.concurrent.ConcurrentHashMap<>();
-    // Sighting range exceeds read range: tags the inventory hears below this
-    // RSSI never survive an EPC-filtered read (calibrated 2026-07-07: reads
-    // succeed up to ~-71 dBm, always fail by -75; field run showed 0/10
-    // batch runs = the sightable-but-unreadable band). Don't waste pauses.
-    private static final double FETCH_MIN_RSSI_DBM = -72.0;
+    // Tags in this deployment sit in dense piles: neighbors detune each
+    // other, so a weak sighting usually means "coupled/detuned right here",
+    // NOT "far away" — readability is stochastic across frequency hops and
+    // micro-movements. Therefore RSSI is used to ORDER candidates (strongest
+    // first for early wins), not to filter them; only an extreme floor is
+    // skipped for this round (RSSI refreshes every sighting, so the floor is
+    // never a permanent ban). Calibration 2026-07-07: reads succeeded up to
+    // ~-71 dBm, failed at -75.8.
+    private static final double FETCH_MIN_RSSI_DBM = -78.0;
+    // Escalating retry cooldown: 2s * attempts, capped. Each retry lands on
+    // different hop/coupling conditions — spreading retries over time is what
+    // eventually reads a detuned neighbor.
+    private static final long FETCH_RETRY_COOLDOWN_MAX_MS = 10000;
     // Priority mode (user tapped "EPC only" in the count bar): fetch USER for
     // the tags already in the list NOW — skip the discovery-quiet wait and
     // re-try tags whose 3 attempts were already spent.
@@ -179,9 +187,10 @@ public class InventoryManager {
      * it collects a BATCH of tags that have no USER yet and reads them with
      * EPC-filtered chunked reads in a single inventory pause (see
      * readUserMemoryForEpcsBatch), then stores the hex on the tag entries so
-     * the Flutter poll picks them up. Attempt caps keep unreadable tags from
-     * looping forever: 1 try in normal mode, 3 in priority mode (counters
-     * reset when priority is switched on).
+     * the Flutter poll picks them up. Normal mode caps attempts at 2 (protects
+     * discovery); priority mode retries indefinitely with an escalating
+     * cooldown — dense-pile neighbors detune each other and read
+     * stochastically, so retries spread over time are what complete them.
      *
      * Each fetch stops the inventory for ~0.3-0.7s, so fetching while the
      * operator is still discovering tags collapses EPC throughput (measured:
@@ -211,14 +220,17 @@ public class InventoryManager {
                     // keeps batches small (discovery stays responsive) with 2
                     // attempts per tag; priority mode ("EPC only" tapped)
                     // reads bigger batches with 3 attempts.
-                    int maxAttempts = userFetchPriority ? 3 : 2;
+                    // Normal mode caps attempts to protect discovery; priority
+                    // mode retries indefinitely (escalating cooldown bounds the
+                    // cost) — dense-pile tags read stochastically, so patience
+                    // wins where a hard cap would strand them.
+                    int maxAttempts = 2;
                     int batchLimit = userFetchPriority ? 10 : 5;
                     long now = System.currentTimeMillis();
                     int pendingTotal = 0; // tags lacking USER (regardless of range)
-                    // candidate EPC -> last sighting; sorted freshest-first below,
-                    // because the most recently seen tag is the most likely to
-                    // still be in front of the antenna when its read runs.
-                    java.util.List<java.util.Map.Entry<String, Long>> candidates =
+                    // candidate EPC -> sighting RSSI; sorted strongest-first
+                    // below (strong signal = highest read odds right now).
+                    java.util.List<java.util.Map.Entry<String, Double>> candidates =
                             new java.util.ArrayList<>();
                     for (EPC t : tagList.values()) {
                         String u = t.getUser();
@@ -226,26 +238,28 @@ public class InventoryManager {
                         if (needsUserFetch(u) && epcKey != null && !epcKey.isEmpty()) {
                             pendingTotal++;
                             Integer tries = userFetchAttempts.get(epcKey);
-                            if (tries != null && tries >= maxAttempts) continue;
+                            if (!userFetchPriority && tries != null && tries >= maxAttempts)
+                                continue;
                             // Only tags the inventory saw moments ago — anything
                             // older is likely out of range and just times out.
                             Long seen = lastSeenMs.get(epcKey);
                             if (seen == null || now - seen > IN_RANGE_WINDOW_MS) continue;
-                            // Recently-failed tags sit out a cooldown.
+                            // Escalating cooldown after failures (see constants).
                             Long attempted = lastFetchAttemptMs.get(epcKey);
-                            if (attempted != null
-                                    && now - attempted < FETCH_RETRY_COOLDOWN_MS) continue;
-                            // Too weak to read (sightable-but-unreadable band).
+                            if (attempted != null) {
+                                long cd = Math.min(
+                                        FETCH_RETRY_COOLDOWN_MS * (tries == null ? 1 : tries),
+                                        FETCH_RETRY_COOLDOWN_MAX_MS);
+                                if (now - attempted < cd) continue;
+                            }
+                            double rssi = -60.0; // neutral default when unparseable
                             try {
                                 String rs = t.getRssi();
-                                if (rs != null && !rs.isEmpty()
-                                        && Double.parseDouble(rs) < FETCH_MIN_RSSI_DBM) {
-                                    continue;
-                                }
+                                if (rs != null && !rs.isEmpty()) rssi = Double.parseDouble(rs);
                             } catch (NumberFormatException ignore) {
-                                // unparseable RSSI: allow the attempt
                             }
-                            candidates.add(new java.util.AbstractMap.SimpleEntry<>(epcKey, seen));
+                            if (rssi < FETCH_MIN_RSSI_DBM) continue; // extreme floor only
+                            candidates.add(new java.util.AbstractMap.SimpleEntry<>(epcKey, rssi));
                         }
                     }
                     // Mini-batch guard: with many tags still pending, a 1-2 tag
@@ -258,10 +272,12 @@ public class InventoryManager {
                         continue;
                     }
 
-                    candidates.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
+                    // Strongest signal first: maximizes wins per pause; weak
+                    // (detuned) neighbors still get their turns via cooldowns.
+                    candidates.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
                     java.util.List<SDKMethods.reader.MemoryReader.UserReadJob> batch =
                             new java.util.ArrayList<>();
-                    for (java.util.Map.Entry<String, Long> c : candidates) {
+                    for (java.util.Map.Entry<String, Double> c : candidates) {
                         // Resume after the combined-mode slice when we have one:
                         // read only words [captured, declared) instead of
                         // re-reading from word 0.
