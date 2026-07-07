@@ -56,6 +56,11 @@ public class InventoryManager {
     private static final long FETCH_RETRY_COOLDOWN_MS = 2000;
     private final java.util.concurrent.ConcurrentHashMap<String, Long> lastFetchAttemptMs =
             new java.util.concurrent.ConcurrentHashMap<>();
+    // Sighting range exceeds read range: tags the inventory hears below this
+    // RSSI never survive an EPC-filtered read (calibrated 2026-07-07: reads
+    // succeed up to ~-71 dBm, always fail by -75; field run showed 0/10
+    // batch runs = the sightable-but-unreadable band). Don't waste pauses.
+    private static final double FETCH_MIN_RSSI_DBM = -72.0;
     // Priority mode (user tapped "EPC only" in the count bar): fetch USER for
     // the tags already in the list NOW — skip the discovery-quiet wait and
     // re-try tags whose 3 attempts were already spent.
@@ -230,6 +235,16 @@ public class InventoryManager {
                             Long attempted = lastFetchAttemptMs.get(epcKey);
                             if (attempted != null
                                     && now - attempted < FETCH_RETRY_COOLDOWN_MS) continue;
+                            // Too weak to read (sightable-but-unreadable band).
+                            try {
+                                String rs = t.getRssi();
+                                if (rs != null && !rs.isEmpty()
+                                        && Double.parseDouble(rs) < FETCH_MIN_RSSI_DBM) {
+                                    continue;
+                                }
+                            } catch (NumberFormatException ignore) {
+                                // unparseable RSSI: allow the attempt
+                            }
                             candidates.add(new java.util.AbstractMap.SimpleEntry<>(epcKey, seen));
                         }
                     }
@@ -280,10 +295,14 @@ public class InventoryManager {
                     loggedWaiting = false;
 
                     long attemptStamp = System.currentTimeMillis();
+                    StringBuilder rssiLog = new StringBuilder();
                     for (SDKMethods.reader.MemoryReader.UserReadJob job : batch) {
                         Integer prev = userFetchAttempts.get(job.epcHex);
                         userFetchAttempts.put(job.epcHex, prev == null ? 1 : prev + 1);
                         lastFetchAttemptMs.put(job.epcHex, attemptStamp);
+                        EPC t = tagList.get(job.epcHex);
+                        rssiLog.append(t != null && t.getRssi() != null ? t.getRssi() : "?")
+                                .append(',');
                     }
 
                     java.util.Map<String, String> results =
@@ -323,8 +342,16 @@ public class InventoryManager {
                             okCount++;
                         }
                     }
+                    // RSSI calibration data: which sighting strengths actually
+                    // yield successful reads (per-job OK/FAIL below).
+                    StringBuilder outcomes = new StringBuilder();
+                    for (SDKMethods.reader.MemoryReader.UserReadJob job : batch) {
+                        String hx = results.get(job.epcHex);
+                        outcomes.append(hx != null && !hx.isEmpty() ? "OK" : "F").append(',');
+                    }
                     Log.i(TAG, "USER batch: " + okCount + "/" + batch.size() + " fetched"
-                            + (userFetchPriority ? " (priority)" : ""));
+                            + (userFetchPriority ? " (priority)" : "")
+                            + " rssi=[" + rssiLog + "] out=[" + outcomes + "]");
                     Thread.sleep(50); // short breather between batches
                 } catch (InterruptedException e) {
                     break;
