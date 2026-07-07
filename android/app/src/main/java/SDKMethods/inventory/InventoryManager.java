@@ -42,6 +42,13 @@ public class InventoryManager {
     // the reader.
     private static final long DISCOVERY_QUIET_MS = 2000;
     private volatile long lastNewTagTime = 0;
+    // Per-EPC last-sighting time. USER fetches only target tags seen within
+    // IN_RANGE_WINDOW_MS: a tag the inventory can't currently see can't be
+    // read either — trying costs a ~200ms timeout per tag, which is what made
+    // large-field USER filling crawl (batches of 10 all failing).
+    private static final long IN_RANGE_WINDOW_MS = 3000;
+    private final java.util.concurrent.ConcurrentHashMap<String, Long> lastSeenMs =
+            new java.util.concurrent.ConcurrentHashMap<>();
     // Priority mode (user tapped "EPC only" in the count bar): fetch USER for
     // the tags already in the list NOW — skip the discovery-quiet wait and
     // re-try tags whose 3 attempts were already spent.
@@ -99,6 +106,7 @@ public class InventoryManager {
             tagList.clear();
         }
         userFetchAttempts.clear();
+        lastSeenMs.clear();
     }
 
     // ==================== INVENTORY OPERATIONS ====================
@@ -184,8 +192,6 @@ public class InventoryManager {
                         Thread.sleep(100);
                         continue;
                     }
-                    loggedWaiting = false;
-
                     // Batch: one inventory pause serves several tags, so the
                     // dominant stop/start overhead is amortized. Normal mode
                     // keeps batches small (discovery stays responsive) and
@@ -193,22 +199,36 @@ public class InventoryManager {
                     // tapped) reads bigger batches with 3 attempts.
                     int maxAttempts = userFetchPriority ? 3 : 1;
                     int batchLimit = userFetchPriority ? 10 : 5;
+                    long now = System.currentTimeMillis();
+                    int pendingTotal = 0; // tags lacking USER (regardless of range)
                     java.util.List<String> batch = new java.util.ArrayList<>();
                     for (EPC t : tagList.values()) {
                         String u = t.getUser();
                         String epcKey = t.getEpc();
                         if ((u == null || u.isEmpty()) && epcKey != null && !epcKey.isEmpty()) {
+                            pendingTotal++;
                             Integer tries = userFetchAttempts.get(epcKey);
-                            if (tries == null || tries < maxAttempts) {
-                                batch.add(epcKey);
-                                if (batch.size() >= batchLimit) break;
-                            }
+                            if (tries != null && tries >= maxAttempts) continue;
+                            // Only tags the inventory saw moments ago — anything
+                            // older is likely out of range and just times out.
+                            Long seen = lastSeenMs.get(epcKey);
+                            if (seen == null || now - seen > IN_RANGE_WINDOW_MS) continue;
+                            batch.add(epcKey);
+                            if (batch.size() >= batchLimit) break;
                         }
                     }
                     if (batch.isEmpty()) {
-                        Thread.sleep(500);
+                        if (pendingTotal > 0 && !loggedWaiting) {
+                            Log.i(TAG, "USER pending: " + pendingTotal
+                                    + " tag(s), none in RF range right now");
+                            loggedWaiting = true;
+                        }
+                        // Short sleep: the resumed inventory refreshes sightings
+                        // within a few hundred ms when tags come into range.
+                        Thread.sleep(300);
                         continue;
                     }
+                    loggedWaiting = false;
 
                     for (String epc : batch) {
                         Integer prev = userFetchAttempts.get(epc);
@@ -437,6 +457,9 @@ public class InventoryManager {
 
     private void addEPCToList(String epc, String tid, String user, String rssi) {
         if (TextUtils.isEmpty(epc)) return;
+        // Every sighting proves the tag is currently in RF range (see
+        // IN_RANGE_WINDOW_MS) — the USER fetcher only targets fresh tags.
+        lastSeenMs.put(epc, System.currentTimeMillis());
 
         // Validate USER: the SDK occasionally returns the TID bytes in the USER field.
         // Valid ATA USER memory starts with DSFID 0x1E00; TIDs usually start E0/E2.
