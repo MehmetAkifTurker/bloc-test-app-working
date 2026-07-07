@@ -152,12 +152,16 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     return null;
   }
 
-  /// Returns filtered tag list based on selected ATA class filter.
+  /// Read-state segment filter driven by the count bar:
+  /// null = show all, true = only EPC+USER read, false = only EPC read.
+  bool? _readStateFilter;
+
+  /// Tags filtered by the selected ATA class only (segment counts are
+  /// computed from this set so the breakdown always adds up to the total).
   ///
   /// Priority: Uses ataClass (from USER memory ToC) first, falls back to
   /// filterValue (from EPC header) if ataClass is not available.
-  /// This ensures correct filtering even when USER memory hasn't been read yet.
-  List<TagItem> get _filteredItems {
+  List<TagItem> get _classFilteredItems {
     final sel = _selectedFilter;
     if (sel == null || sel.id == kFilterAll.id) {
       return _tagItems;
@@ -169,6 +173,14 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       final effectiveClass = t.ataClass ?? t.filterValue;
       return effectiveClass == code;
     }).toList();
+  }
+
+  /// Final list: class filter + read-state segment filter.
+  List<TagItem> get _filteredItems {
+    final base = _classFilteredItems;
+    final rs = _readStateFilter;
+    if (rs == null) return base;
+    return base.where((t) => (t.userRead == true) == rs).toList();
   }
 
   // Processes one tag from the continuous-inventory snapshot (getCurrentTags).
@@ -778,57 +790,91 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     );
   }
 
+  /// One tappable segment of the count bar (Total / EPC+USER / EPC only).
+  Widget _countSegment({
+    required String label,
+    required int count,
+    required Color color,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          // ignore: deprecated_member_use
+          color: selected ? color : color.withOpacity(0.12),
+          child: Column(
+            children: [
+              Text(
+                "$count",
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: selected ? Colors.white : color),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? Colors.white : color),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTagList() {
     final items = _filteredItems;
+    final base = _classFilteredItems;
+    final fullCount = base.where((t) => t.userRead == true).length;
+    final epcOnlyCount = base.length - fullCount;
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Segmented count bar: Total (left, shows all) | EPC+USER (middle,
+          // tap to filter to fully-read tags) | EPC only (right, tap to filter
+          // to tags whose USER hasn't been read). Tapping an active segment
+          // switches back to all.
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Row(
+                children: [
+                  _countSegment(
+                    label: "Total",
+                    count: base.length,
                     color: _brandNavy,
-                    borderRadius: BorderRadius.circular(6),
+                    selected: _readStateFilter == null,
+                    onTap: () => setState(() => _readStateFilter = null),
                   ),
-                  child: const Icon(Icons.style, size: 16, color: Colors.white),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  "Tags",
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.3),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _brandNavy,
-                    borderRadius: BorderRadius.circular(12),
+                  const SizedBox(width: 2),
+                  _countSegment(
+                    label: "EPC + USER",
+                    count: fullCount,
+                    color: Colors.green.shade600,
+                    selected: _readStateFilter == true,
+                    onTap: () => setState(() => _readStateFilter =
+                        _readStateFilter == true ? null : true),
                   ),
-                  child: Text(
-                    "${items.length}",
-                    style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white),
-                  ),
-                ),
-                if (items.length != _tagItems.length) ...[
-                  const SizedBox(width: 4),
-                  Text(
-                    "/ ${_tagItems.length}",
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  const SizedBox(width: 2),
+                  _countSegment(
+                    label: "EPC only",
+                    count: epcOnlyCount,
+                    color: Colors.amber.shade700,
+                    selected: _readStateFilter == false,
+                    onTap: () => setState(() => _readStateFilter =
+                        _readStateFilter == false ? null : false),
                   ),
                 ],
-              ],
+              ),
             ),
           ),
           Expanded(
