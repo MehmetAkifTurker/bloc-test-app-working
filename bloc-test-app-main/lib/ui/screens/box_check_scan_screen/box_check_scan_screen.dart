@@ -98,6 +98,23 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('RFID connection failed (UHF).')),
       );
+      return;
+    }
+    await _syncPowerFromReader();
+  }
+
+  /// The slider used to start at a hardcoded 5 dBm while the module kept its
+  /// real (persisted) power — so the UI could show 5 while reading at 18+.
+  /// Read the ACTUAL power from the module and reflect it in the slider.
+  Future<void> _syncPowerFromReader() async {
+    try {
+      final raw = await RfidC72Plugin.getPowerLevel;
+      final actual = int.tryParse(raw?.trim() ?? '');
+      if (actual == null) return;
+      final clamped = actual.clamp(5, 30).toDouble();
+      if (mounted) setState(() => _powerLevel = clamped);
+    } catch (_) {
+      // Keep the current slider value if the query fails.
     }
   }
 
