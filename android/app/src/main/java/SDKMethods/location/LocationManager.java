@@ -37,6 +37,11 @@ public class LocationManager {
     // Polling fallback
     private volatile boolean isLocating = false;
     private Thread pollingThread;
+
+    /** Whether a locate loop is currently driving the reader. */
+    public boolean isLocating() {
+        return isLocating;
+    }
     private String targetEpc;
     private Handler mainHandler;
     
@@ -572,8 +577,15 @@ public class LocationManager {
             
             while (isLocating) {
                 try {
-                    // Read a single tag (filter already set for target EPC)
-                    UHFTAGInfo tagInfo = reader.inventorySingleTag();
+                    // Read a single tag (filter already set for target EPC).
+                    // Serialize on the MemoryReader lock: concurrent readData
+                    // (detail-screen USER read) + inventorySingleTag from two
+                    // threads crashes the native SDK lib (SIGSEGV, app death
+                    // observed in the field 2026-07-07).
+                    UHFTAGInfo tagInfo;
+                    synchronized (SDKMethods.reader.MemoryReader.getInstance()) {
+                        tagInfo = reader.inventorySingleTag();
+                    }
                     readCount++;
                     
                     if (tagInfo != null && tagInfo.getEPC() != null) {

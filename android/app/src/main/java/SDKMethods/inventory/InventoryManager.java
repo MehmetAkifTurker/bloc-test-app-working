@@ -141,6 +141,19 @@ public class InventoryManager {
             return false;
         }
 
+        // A locate loop left running (e.g. user backed out of the detail
+        // screen mid-locate) drives the reader from its own thread; starting
+        // inventory on top of it crashes the native SDK lib. Scan wins.
+        try {
+            SDKMethods.location.LocationManager lm =
+                    SDKMethods.location.LocationManager.getInstance();
+            if (lm.isLocating()) {
+                Log.w(TAG, "start(): locate loop active — stopping it first");
+                lm.stopLocation();
+            }
+        } catch (Exception ignore) {
+        }
+
         if (!isStart) {
             if (isSingleRead) {
                 UHFTAGInfo info = reader.inventorySingleTag();

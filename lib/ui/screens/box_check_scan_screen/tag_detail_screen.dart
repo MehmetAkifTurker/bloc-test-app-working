@@ -153,6 +153,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     _umTimer?.cancel();
     _unsubscribeLocate();
     _stopBeepTimer();
+    if (_isLocating) {
+      // Leaving the screen mid-locate left the native polling loop driving
+      // the reader, which crashed the SDK lib when the scan screen touched
+      // it next. Fire-and-forget stop; native side also guards on start.
+      RfidC72Plugin.stopLocation();
+    }
     super.dispose();
   }
 
