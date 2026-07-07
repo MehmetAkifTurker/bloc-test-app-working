@@ -327,7 +327,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       // streams all tags into a buffer). The native TagThread drains the buffer
       // (EPC + TID + USER in combined mode); we just poll the accumulated snapshot
       // at UI rate, decoupling read speed from UI rate for dense environments.
-      RfidC72Plugin.startContinuous;
+      _startContinuousWithRetry();
       _scanTimer = Timer.periodic(const Duration(milliseconds: 250), (_) async {
         if (_scanTickBusy) return;
         _scanTickBusy = true;
@@ -343,6 +343,32 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       _scanTimer = null;
       RfidC72Plugin.stop;
       setState(() => _isScanning = false);
+    }
+  }
+
+  // Start native continuous inventory, retrying briefly. The start can fail
+  // transiently right after returning to the foreground: the reader is released
+  // in the background (so other RFID apps can use it) and the reconnect runs on
+  // a background thread, so the first attempt may find the reader not ready yet.
+  Future<void> _startContinuousWithRetry() async {
+    for (int attempt = 0; attempt < 6; attempt++) {
+      if (!mounted || !_isScanning && attempt > 0) return; // user toggled off
+      bool ok = false;
+      try {
+        ok = await RfidC72Plugin.startContinuous ?? false;
+      } catch (_) {}
+      if (ok) return;
+      // Reader not ready — make sure it is connected, then retry.
+      try {
+        await RfidC72Plugin.ensureUhfConnected();
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 400));
+    }
+    if (mounted && _isScanning) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Reader not ready — scan could not start. '
+            'Stop and start the scan again.'),
+      ));
     }
   }
 

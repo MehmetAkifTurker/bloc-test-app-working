@@ -73,8 +73,12 @@ public class InventoryManager {
 
     public boolean start(boolean isSingleRead) {
         RFIDWithUHFUART reader = UHFManager.getInstance().getReader();
-        if (reader == null) return false;
-        
+        if (reader == null) {
+            Log.e(TAG, "start(" + (isSingleRead ? "single" : "continuous")
+                    + ") FAILED: reader is null (not connected yet?)");
+            return false;
+        }
+
         if (!isStart) {
             if (isSingleRead) {
                 UHFTAGInfo info = reader.inventorySingleTag();
@@ -84,7 +88,9 @@ public class InventoryManager {
                 }
                 return false;
             } else {
-                if (reader.startInventoryTag()) {
+                boolean ok = reader.startInventoryTag();
+                Log.i(TAG, "startInventoryTag => " + (ok ? "OK" : "FAILED"));
+                if (ok) {
                     isStart = true;
                     new TagThread().start();
                     return true;
@@ -318,6 +324,10 @@ public class InventoryManager {
         }
         tag.setCount(String.valueOf(oldCount + 1));
 
+        if (existing == null) {
+            // First sighting only (no per-read spam): confirms tags reach the native list.
+            Log.i(TAG, "NEW TAG: EPC=" + epc + " USER=" + (user.length() / 4) + "w");
+        }
         tagList.put(epc, tag);
         // NOTE: no per-tag push here — Flutter polls getCurrentTags() at UI rate,
         // decoupling the fast hardware buffer drain from UI updates (dense fields).

@@ -84,6 +84,44 @@ public class UHFManager {
     }
 
     private void configureReader() {
+        // Reset module state left over from OTHER apps. Since we release the
+        // reader when backgrounded (so e.g. the vendor UHF demo can use it),
+        // that app's select masks / inventory mode persist in the module and
+        // would make our inventory return zero tags. Clear filters on every
+        // bank and toggle the inventory mode before applying our config.
+        try {
+            mReader.setFilter(RFIDWithUHFUART.Bank_EPC, 0, 0, "");
+            mReader.setFilter(RFIDWithUHFUART.Bank_TID, 0, 0, "");
+            mReader.setFilter(RFIDWithUHFUART.Bank_USER, 0, 0, "");
+            Log.i(TAG, "✓ Filters cleared (EPC/TID/USER)");
+        } catch (Exception e) {
+            Log.w(TAG, "Filter clear failed: " + e.getMessage());
+        }
+        // IMPORTANT: TagFocus and FastID are Impinj-Monza-proprietary features.
+        // With non-Impinj tags (as used here) enabling them makes the reader
+        // completely DEAF: inventory returns zero tags while the vendor demo
+        // reads the same tags fine. Verified by a staged on-device probe
+        // (as-configured => null; fastID off => tags appear immediately).
+        // Explicitly set both OFF (not just "don't enable") to also clear any
+        // state left in the module by other apps. TID is already provided by
+        // setEPCAndTIDUserMode, so FastID adds nothing for us anyway.
+        try {
+            mReader.setTagFocus(false);
+        } catch (Exception ignore) {
+        }
+        try {
+            mReader.setFastID(false);
+            Log.i(TAG, "✓ TagFocus/FastID disabled (non-Impinj tags)");
+        } catch (Exception ignore) {
+        }
+
+        try {
+            // Same "reset trick" as the demo app: toggle mode off, then set ours.
+            mReader.setEPCAndTIDMode();
+            Thread.sleep(15);
+        } catch (Exception ignore) {
+        }
+
         try {
             // Configure EPC+TID+USER simultaneous reading
             // FIRST PARAM (tidLen): TID words to read during inventory
@@ -111,22 +149,22 @@ public class UHFManager {
             Log.e(TAG, "Failed to configure scanning mode: " + e.getMessage());
         }
 
-        try {
-            mReader.setTagFocus(true);
-        } catch (Exception ignore) {
-        }
-        
-        try {
-            mReader.setFastID(true);
-            Log.i(TAG, "✓ FastID enabled");
-        } catch (Exception ignore) {
-        }
+        // (TagFocus/FastID intentionally NOT enabled here — see the note above:
+        // they deafen the reader for the non-Impinj tags used in this project.)
 
         try {
             int currentPower = mReader.getPower();
             Log.d(TAG, "Current UHF power: " + currentPower + " dBm");
         } catch (Exception e) {
             Log.w(TAG, "Failed to read power: " + e.getMessage());
+        }
+
+        try {
+            // Diagnostic: log the frequency region so a band mismatch vs. the
+            // vendor app is visible in logcat (tags won't respond on a wrong band).
+            Log.i(TAG, "Frequency mode: " + mReader.getFrequencyMode());
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to read frequency mode: " + e.getMessage());
         }
     }
 
