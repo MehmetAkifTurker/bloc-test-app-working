@@ -36,6 +36,12 @@ public class InventoryManager {
     private Thread userFetchThread;
     private final java.util.concurrent.ConcurrentHashMap<String, Integer> userFetchAttempts =
             new java.util.concurrent.ConcurrentHashMap<>();
+    // Discovery-heat tracking: USER fetches pause the inventory, so they only
+    // run when no NEW EPC has been seen for DISCOVERY_QUIET_MS (field is
+    // "quiet"). While the operator sweeps new tags, discovery gets 100% of
+    // the reader.
+    private static final long DISCOVERY_QUIET_MS = 2000;
+    private volatile long lastNewTagTime = 0;
 
     private InventoryManager() {
         tagList = new java.util.concurrent.ConcurrentHashMap<>();
@@ -102,6 +108,7 @@ public class InventoryManager {
                     isStart = true;
                     new TagThread().start();
                     userFetchAttempts.clear();
+                    lastNewTagTime = System.currentTimeMillis(); // treat scan start as "hot"
                     startUserFetchThread();
                     return true;
                 }
@@ -132,15 +139,34 @@ public class InventoryManager {
      * it picks one tag at a time that has no USER yet and reads it with an
      * EPC-filtered chunked read (readUserMemoryForEpcFull pauses/resumes the
      * inventory internally), then stores the hex on the tag entry so the
-     * Flutter poll picks it up. One tag per cycle + a breather keeps EPC
-     * discovery fast; 3 attempts per tag so unreadable ones don't loop forever.
+     * Flutter poll picks it up. 3 attempts per tag so unreadable ones don't
+     * loop forever.
+     *
+     * Each fetch stops the inventory for ~0.3-0.7s, so fetching while the
+     * operator is still discovering tags collapses EPC throughput (measured:
+     * 170 EPCs -> 61 in the same sweep). Fetches therefore wait until the
+     * field is quiet (no new EPC for DISCOVERY_QUIET_MS); once quiet they run
+     * back-to-back with only a short breather.
      */
     private void startUserFetchThread() {
         if (userFetchThread != null && userFetchThread.isAlive()) return;
         userFetchThread = new Thread(() -> {
             Log.i(TAG, "USER-fetch thread started");
+            boolean loggedWaiting = false;
             while (isStart) {
                 try {
+                    long sinceNewTag = System.currentTimeMillis() - lastNewTagTime;
+                    if (sinceNewTag < DISCOVERY_QUIET_MS) {
+                        // Discovery is hot: give the reader fully to the inventory.
+                        if (!loggedWaiting) {
+                            Log.i(TAG, "USER-fetch waiting (discovery hot)");
+                            loggedWaiting = true;
+                        }
+                        Thread.sleep(100);
+                        continue;
+                    }
+                    loggedWaiting = false;
+
                     EPC pending = null;
                     for (EPC t : tagList.values()) {
                         String u = t.getUser();
@@ -183,7 +209,7 @@ public class InventoryManager {
                                 + epc.substring(0, Math.min(16, epc.length()))
                                 + "... words=" + (hex.length() / 4));
                     }
-                    Thread.sleep(250); // let continuous inventory breathe between fetches
+                    Thread.sleep(50); // field is quiet — short breather, fetch fast
                 } catch (InterruptedException e) {
                     break;
                 } catch (Exception e) {
@@ -423,6 +449,9 @@ public class InventoryManager {
         tag.setCount(String.valueOf(oldCount + 1));
 
         if (existing == null) {
+            // New EPC: discovery is still hot — postpone USER fetching (see
+            // startUserFetchThread). Re-reads of known tags don't count.
+            lastNewTagTime = System.currentTimeMillis();
             // First sighting only (no per-read spam): confirms tags reach the native list.
             Log.i(TAG, "NEW TAG: EPC=" + epc + " USER=" + (user.length() / 4) + "w");
         }
