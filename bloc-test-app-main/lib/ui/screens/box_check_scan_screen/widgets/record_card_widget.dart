@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:water_boiler_rfid_labeler/ui/screens/box_check_scan_screen/ata_constants.dart';
 
 // Theme constants
 const Color _brandNavy = Color(0xFF003B5C);
@@ -36,21 +37,22 @@ class RecordCardWidget extends StatelessWidget {
             key.isNotEmpty &&
             value != null &&
             value.isNotEmpty) {
-          // Format date fields (YYYYMMDD → YYYY/MM/DD)
-          if ((key == 'DMF' ||
-                  key == 'EXP' ||
-                  key == 'OVD' ||
-                  key == 'DOH' ||
-                  key == 'DNH') &&
-              value.length == 8 &&
-              RegExp(r'^\d{8}$').hasMatch(value)) {
-            value =
-                '${value.substring(0, 4)}/${value.substring(4, 6)}/${value.substring(6, 8)}';
-          }
+          // Format date TEIs (YYYYMMDD → YYYY/MM/DD); non-dates pass through.
+          if (isDateField(key)) value = formatAtaDate(value);
           recordFields[key] = value;
         }
       }
     }
+
+    // Standard ATA display order first, then any extra TEIs alphabetically —
+    // same ordering as the rest of the app so every detail view looks alike.
+    final orderedKeys = <String>[
+      for (final k in kAtaUserFieldOrder)
+        if (recordFields.containsKey(k)) k,
+    ];
+    orderedKeys.addAll(
+      recordFields.keys.where((k) => !orderedKeys.contains(k)).toList()..sort(),
+    );
 
     // Icon based on record type
     IconData recordIcon;
@@ -99,17 +101,19 @@ class RecordCardWidget extends StatelessWidget {
           ),
           if (recordFields.isNotEmpty) ...[
             const SizedBox(height: 12),
-            ...recordFields.entries.map((e) => Padding(
+            // Human-readable ATA field names (per ATA Spec 2000 CSDD), matching
+            // the EPC Payload card's label/value row style.
+            ...orderedKeys.map((k) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(
-                        width: 50,
-                        child: Text('${e.key}:', style: _labelStyle),
+                        width: 140,
+                        child: Text(getTeiFieldLabel(k), style: _labelStyle),
                       ),
                       Expanded(
-                        child: Text(e.value,
+                        child: Text(recordFields[k]!,
                             style: _valueStyle.copyWith(fontSize: 13)),
                       ),
                     ],

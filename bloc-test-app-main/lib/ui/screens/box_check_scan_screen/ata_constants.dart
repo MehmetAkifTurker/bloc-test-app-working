@@ -94,6 +94,12 @@ const Map<String, String> kAtaUserFieldLabels = {
   'OVD': 'Overhaul Date',
   'OMM': 'OEM Code (CAGE)',
   'PML': 'Part Modification Level',
+  // Lifecycle / Part History / Scratchpad TEIs (ATA Spec 2000 Tables 6/10/11)
+  'CND': 'Condition Code',
+  'ACT': 'Action Code',
+  'ACO': 'Action Company (CAGE)',
+  'ACD': 'Action Date',
+  'REM': 'Remarks',
 };
 
 /// 6-bit ASCII Map for ATA Spec 2000 encoding
@@ -170,9 +176,10 @@ String formatAtaDate(String? raw) {
   return '${raw.substring(0, 4)}/${raw.substring(4, 6)}/${raw.substring(6, 8)}';
 }
 
-/// Check if a field contains date data (YYYYMMDD TEIs per ATA Spec 2000 Table 3).
+/// Check if a field contains date data (YYYYMMDD TEIs per ATA Spec 2000,
+/// Table 3 birth dates + ACD Action Date from PHR/Scratchpad entries).
 /// PDT (Part Description), ESD/LLE (indicators) are NOT dates.
 bool isDateField(String fieldId) {
-  return const {'DMF', 'EXP', 'OVD', 'DOH', 'DNH'}.contains(fieldId);
+  return const {'DMF', 'EXP', 'OVD', 'DOH', 'DNH', 'ACD'}.contains(fieldId);
 }
 

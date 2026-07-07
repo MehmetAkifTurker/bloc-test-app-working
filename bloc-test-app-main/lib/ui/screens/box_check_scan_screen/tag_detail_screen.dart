@@ -25,7 +25,6 @@ class TagDetailScreen extends StatefulWidget {
 }
 
 // Local date keys for formatting
-const Set<String> _kDateKeys = {'DMF', 'EXP', 'DOH', 'DNH', 'OVD'};
 
 // Local theme constants (these reference shared constants)
 const Color _brandNavy = Color(0xFF003B5C);
@@ -335,107 +334,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   }
 
   // ----------------- UI HELPERS -----------------
-  Map<String, String> _parsePayloadFields(String text) {
-    final fields = <String, String>{};
-    final sanitized = text.replaceAll('\n', ' ').trim();
-    final reg = RegExp(r'([A-Z0-9]{3,5})\s+([^*]+)');
-    for (final match in reg.allMatches(sanitized)) {
-      final key = match.group(1)?.trim().toUpperCase();
-      final value = match.group(2)?.trim();
-      if (key == null || key.isEmpty || value == null || value.isEmpty) {
-        continue;
-      }
-      fields[key] = value;
-    }
-    return fields;
-  }
-
-  String _formatDateString(String v) {
-    // If already contains non-digits (e.g., slashes), keep as-is
-    if (RegExp(r'[^0-9]').hasMatch(v)) return v;
-    // YYYYMMDD
-    final ymd = RegExp(r'^(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$');
-    if (ymd.hasMatch(v)) {
-      return '${v.substring(0, 4)}/${v.substring(4, 6)}/${v.substring(6, 8)}';
-    }
-    // DDMMYYYY
-    final dmy = RegExp(r'^(0[1-9]|[12]\d|3[01])(0[1-9]|1[0-2])(19|20)\d{2}$');
-    if (dmy.hasMatch(v)) {
-      return '${v.substring(0, 2)}/${v.substring(2, 4)}/${v.substring(4, 8)}';
-    }
-    return v;
-  }
-
-  String _formatAtaValue(String key, String value) {
-    if (_kDateKeys.contains(key)) return _formatDateString(value);
-    return value;
-  }
-
-  Widget _payloadBox(Map<String, String> providedFields, String text) {
-    final Map<String, String> f =
-        providedFields.isNotEmpty ? providedFields : _parsePayloadFields(text);
-    final List<Widget> lines = [];
-    final Set<String> seen = {};
-
-    void add(String key) {
-      final v = f[key]?.trim();
-      if (v == null || v.isEmpty) return;
-      if (!seen.add(key)) return;
-      final shown = _formatAtaValue(key, v);
-      final uiLabel = kAtaUserFieldLabels[key] ?? key;
-      lines.add(Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 140,
-              child: Text(uiLabel, style: _labelStyle),
-            ),
-            Expanded(
-              child: Text(shown, style: _valueStyle),
-            ),
-          ],
-        ),
-      ));
-    }
-
-    for (final key in kAtaUserFieldOrder) {
-      add(key);
-    }
-
-    final extraKeys = f.keys.where((key) => !seen.contains(key)).toList()
-      ..sort();
-    for (final key in extraKeys) {
-      add(key);
-    }
-
-    if (lines.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: _bgLight,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _borderLight),
-        ),
-        child: Text(text.isEmpty ? '-' : text, style: _valueStyle),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _bgLight,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _borderLight),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: lines,
-      ),
-    );
-  }
-
   Widget _chip(String title, String value) {
     return Expanded(
       child: Container(
@@ -539,6 +437,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         ),
       ),
     );
+  }
+
+  /// Short-ToC single tags: SRT-U (tag type 0xA) carries a Utility record,
+  /// anything else is treated as a Birth Record (SRT-B).
+  bool _singleTagIsUtility(Map<String, dynamic> decodedUser) {
+    final tocHeader = decodedUser['tocHeader'];
+    return tocHeader is Map && tocHeader['ataTagType'] == 0x000A;
   }
 
   bool _isDualRecordTag(Map<String, dynamic> decodedUser) {
@@ -724,10 +629,19 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             RecordSectionsWidget(decodedUser: decodedUser),
             const SizedBox(height: 16),
           ] else if (hasPayload) ...[
-            // Single record - show combined payload
-            const Text('User Memory Payload', style: _sectionTitleStyle),
-            const SizedBox(height: 8),
-            _payloadBox(decodedFields, payloadText),
+            // Single/short-ToC tag — render the combined payload through the SAME
+            // record card used for Dual/Multi tags, so every detail screen shares
+            // one look (icon + title card, human-readable ATA field rows).
+            RecordCardWidget(record: {
+              'descriptor': {
+                'recordType': _singleTagIsUtility(decodedUser) ? 0xFF : 0x00,
+                'recordTypeLabel': _singleTagIsUtility(decodedUser)
+                    ? 'Utility Record'
+                    : 'Birth Record',
+              },
+              'payloadText': payloadText,
+              'fields': decodedFields,
+            }),
             const SizedBox(height: 16),
           ],
           _longPressCopyBox('EPC (Hex)', epcText),
