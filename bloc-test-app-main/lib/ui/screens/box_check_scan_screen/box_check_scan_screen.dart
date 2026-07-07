@@ -176,7 +176,6 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   // read for Lifecycle data happens on demand in the detail screen.
   Future<void> _processTag(Map<String, dynamic> tagInfo) async {
     try {
-
       final String epcHex = (tagInfo['epc'] ?? '')
           .toString()
           .replaceAll(RegExp(r'\s+'), '')
@@ -307,10 +306,10 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   void _upsertTag(TagItem tag) {
     final id = tag.uniqueId;
     final epcOnly = tag.rawEpc.toUpperCase().trim();
-    
+
     // First check exact match
     int? existingIndex = _tagIndexById[id];
-    
+
     // If not found, search by EPC prefix to handle TID state changes
     // (same physical tag may have different keys when TID is/isn't readable)
     if (existingIndex == null) {
@@ -323,7 +322,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
         }
       }
     }
-    
+
     if (existingIndex != null) {
       _tagItems[existingIndex] = tag;
       _rebuildTagIndex();
@@ -470,7 +469,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   Widget _buildAtaFilterDropdown() {
     final opts = _filterOptions;
     final currentFilter = _selectedFilter ?? kFilterAll;
-    
+
     return Theme(
       data: Theme.of(context).copyWith(
         inputDecorationTheme: InputDecorationTheme(
@@ -495,7 +494,8 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
             fontWeight: FontWeight.w500,
           ),
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(color: Colors.grey.shade300),
@@ -569,15 +569,17 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
                           isAll ? 'All Tags' : o.label,
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                            color: isAll ? Colors.green.shade700 : Colors.black87,
+                            fontWeight:
+                                isSelected ? FontWeight.w700 : FontWeight.w500,
+                            color:
+                                isAll ? Colors.green.shade700 : Colors.black87,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          isAll 
-                              ? 'Show all scanned tags' 
+                          isAll
+                              ? 'Show all scanned tags'
                               : 'Filter Value ${o.id}',
                           style: TextStyle(
                             fontSize: 11,
@@ -723,44 +725,54 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     );
   }
 
-  Widget _listItem(TagItem item, int index) {
+  Widget _listItem(TagItem item, int index, int count) {
     final ok = item.userRead == true;
-    return InkWell(
-      onTap: () => _openDetail(item),
-      child: Container(
-        color: ok ? Colors.green.shade50 : Colors.yellow.shade100,
-        padding: const EdgeInsets.symmetric(vertical: 10), // biraz daha nefes
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center, // <== dikeyde ortala
-          children: [
-            const SizedBox(width: 8),
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: ok ? Colors.green : Colors.amber,
-              child: Text(
-                (index + 1).toString(),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("PN: ${item.partNumber}", softWrap: true),
-                    Text("SN: ${item.serialNumber}", softWrap: true),
-                    Text("CAGE: ${item.cage}", softWrap: true),
-                  ],
+    // Grouped-list look (like the rounded buttons above): round the TOP
+    // corners of the first item and the BOTTOM corners of the last one.
+    // A single item gets both, middle items stay square.
+    final radius = BorderRadius.vertical(
+      top: index == 0 ? const Radius.circular(12) : Radius.zero,
+      bottom: index == count - 1 ? const Radius.circular(12) : Radius.zero,
+    );
+    return ClipRRect(
+      borderRadius: radius,
+      child: InkWell(
+        onTap: () => _openDetail(item),
+        child: Container(
+          color: ok ? Colors.green.shade50 : Colors.yellow.shade100,
+          padding: const EdgeInsets.symmetric(vertical: 10), // biraz daha nefes
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center, // <== dikeyde ortala
+            children: [
+              const SizedBox(width: 8),
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: ok ? Colors.green : Colors.amber,
+                child: Text(
+                  (index + 1).toString(),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("PN: ${item.partNumber}", softWrap: true),
+                      Text("SN: ${item.serialNumber}", softWrap: true),
+                      Text("CAGE: ${item.cage}", softWrap: true),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -828,7 +840,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
                     separatorBuilder: (_, __) =>
                         const Divider(height: 1, thickness: 1),
                     itemBuilder: (context, index) =>
-                        _listItem(items[index], index),
+                        _listItem(items[index], index, items.length),
                   ),
           ),
         ],
