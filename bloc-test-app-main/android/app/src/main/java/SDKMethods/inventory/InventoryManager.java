@@ -26,12 +26,19 @@ public class InventoryManager {
     private static final String TAG = "InventoryManager";
     
     private static InventoryManager instance;
-    private HashMap<String, EPC> tagList;
-    private boolean isStart = false;
+    // ConcurrentHashMap: written from the main thread (handler / method channel)
+    // and read by the background USER-fetch thread during scanning.
+    private java.util.concurrent.ConcurrentHashMap<String, EPC> tagList;
+    private volatile boolean isStart = false;
     private Handler handler;
+    // Background USER completer (see startUserFetchThread): per-EPC attempt
+    // counter so unreadable tags don't get hammered forever.
+    private Thread userFetchThread;
+    private final java.util.concurrent.ConcurrentHashMap<String, Integer> userFetchAttempts =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     private InventoryManager() {
-        tagList = new HashMap<>();
+        tagList = new java.util.concurrent.ConcurrentHashMap<>();
         initHandler();
     }
 
@@ -67,6 +74,7 @@ public class InventoryManager {
         if (tagList != null) {
             tagList.clear();
         }
+        userFetchAttempts.clear();
     }
 
     // ==================== INVENTORY OPERATIONS ====================
@@ -93,6 +101,8 @@ public class InventoryManager {
                 if (ok) {
                     isStart = true;
                     new TagThread().start();
+                    userFetchAttempts.clear();
+                    startUserFetchThread();
                     return true;
                 }
                 return false;
@@ -110,6 +120,85 @@ public class InventoryManager {
         isStart = false;
         clearData();
         return false;
+    }
+
+    // ==================== BACKGROUND USER FETCH (during scanning) ====================
+
+    /**
+     * The combined EPC+TID+USER inventory mode does NOT deliver USER data on
+     * this reader/tag combination (buffer entries always carry USER=0 words),
+     * so USER used to be read only when the detail screen opened. This thread
+     * fills USER memory IN THE BACKGROUND while continuous inventory runs:
+     * it picks one tag at a time that has no USER yet and reads it with an
+     * EPC-filtered chunked read (readUserMemoryForEpcFull pauses/resumes the
+     * inventory internally), then stores the hex on the tag entry so the
+     * Flutter poll picks it up. One tag per cycle + a breather keeps EPC
+     * discovery fast; 3 attempts per tag so unreadable ones don't loop forever.
+     */
+    private void startUserFetchThread() {
+        if (userFetchThread != null && userFetchThread.isAlive()) return;
+        userFetchThread = new Thread(() -> {
+            Log.i(TAG, "USER-fetch thread started");
+            while (isStart) {
+                try {
+                    EPC pending = null;
+                    for (EPC t : tagList.values()) {
+                        String u = t.getUser();
+                        String epcKey = t.getEpc();
+                        if ((u == null || u.isEmpty()) && epcKey != null && !epcKey.isEmpty()) {
+                            Integer tries = userFetchAttempts.get(epcKey);
+                            if (tries == null || tries < 3) {
+                                pending = t;
+                                break;
+                            }
+                        }
+                    }
+                    if (pending == null) {
+                        Thread.sleep(500);
+                        continue;
+                    }
+
+                    String epc = pending.getEpc();
+                    Integer prev = userFetchAttempts.get(epc);
+                    userFetchAttempts.put(epc, prev == null ? 1 : prev + 1);
+
+                    String hex = SDKMethods.reader.MemoryReader.getInstance()
+                            .readUserMemoryForEpcFull(epc);
+
+                    if (!isStart) {
+                        // User pressed Stop mid-fetch; the fetch restored the
+                        // inventory it had paused — make sure it is stopped.
+                        try {
+                            RFIDWithUHFUART r = UHFManager.getInstance().getReader();
+                            if (r != null) r.stopInventory();
+                        } catch (Exception ignore) {
+                        }
+                        break;
+                    }
+
+                    if (hex != null && hex.length() >= 16) {
+                        EPC cur = tagList.get(epc);
+                        if (cur != null) cur.setUser(hex);
+                        Log.i(TAG, "USER fetched: EPC="
+                                + epc.substring(0, Math.min(16, epc.length()))
+                                + "... words=" + (hex.length() / 4));
+                    }
+                    Thread.sleep(250); // let continuous inventory breathe between fetches
+                } catch (InterruptedException e) {
+                    break;
+                } catch (Exception e) {
+                    Log.w(TAG, "USER-fetch error: " + e.getMessage());
+                    try {
+                        Thread.sleep(400);
+                    } catch (InterruptedException ie) {
+                        break;
+                    }
+                }
+            }
+            Log.i(TAG, "USER-fetch thread stopped");
+        });
+        userFetchThread.setName("UserFetchThread");
+        userFetchThread.start();
     }
 
     // ==================== SINGLE TAG READ ====================
@@ -316,7 +405,16 @@ public class InventoryManager {
         tag.setTid(bestTid);
         tag.setValidTid(isTidValid(bestTid));
 
-        if (!user.isEmpty()) tag.setUser(user);       // else keep previously captured USER
+        if (!user.isEmpty()) {
+            // Log the first time USER data arrives for a tag (combined-mode capture).
+            boolean hadUser = existing != null && existing.getUser() != null
+                    && !existing.getUser().isEmpty();
+            if (!hadUser) {
+                Log.i(TAG, "USER captured: EPC=" + epc.substring(0, Math.min(16, epc.length()))
+                        + "... words=" + (user.length() / 4));
+            }
+            tag.setUser(user);                        // else keep previously captured USER
+        }
 
         int oldCount = 0;
         if (existing != null && existing.getCount() != null) {
