@@ -260,13 +260,18 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
 
       final decoded = decodeEpc(epcHex);
 
-      // USER from the inventory buffer (combined mode, ~61 words) is enough to
-      // decode the Birth Record for the list. The full read (Lifecycle at word 74+)
-      // is deferred to the detail screen, which reads it on open while scanning is
-      // paused — doing it here would stall continuous inventory in dense fields.
-      // Prefer fresh buffer USER; otherwise keep what we already had.
-      final String? userHex =
-          hasDirectUser ? directUserMemory : existingItem?.userHex;
+      // USER arrives in two stages: a 16-word combined-mode slice during
+      // inventory (instant preview) and the full memory via background top-up.
+      // Richest wins — never let the short slice overwrite a longer read
+      // (e.g. one done by the detail screen or a completed top-up).
+      final String? prevHex = existingItem?.userHex;
+      final String? userHex = (hasDirectUser &&
+              (prevHex == null || directUserMemory.length > prevHex.length))
+          ? directUserMemory
+          : prevHex;
+      // Native says whether the ToC-declared size is fully captured; green
+      // status and the EPC+USER count must mean COMPLETE, not "some bytes".
+      final bool userComplete = tagInfo['userComplete'] == true;
 
       int? ataClass = existingItem?.ataClass;
       if (userHex != null && userHex.length >= 16) {
@@ -288,7 +293,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
           serialNumber: decoded.serialNumber,
           tid: effectiveTid,
           filterValue: decoded.filterValue,
-          userRead: userHex != null && userHex.length >= 16,
+          userRead: userComplete,
           userHex: userHex,
           ataClass: ataClass,
         );
@@ -305,10 +310,12 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
           serialNumber: decoded.serialNumber,
           tid: effectiveTid,
           filterValue: decoded.filterValue,
+          // Sticky true: a detail-screen full read may have completed this tag
+          // before the native flag catches up — don't flip it back to partial.
           userRead: epcChanged
-              ? (userHex != null && userHex.isNotEmpty)
-              : (userHex != null ? true : existingItem.userRead),
-          userHex: epcChanged ? userHex : (userHex ?? existingItem.userHex),
+              ? userComplete
+              : (userComplete || existingItem.userRead),
+          userHex: epcChanged ? directUserMemory : userHex,
           ataClass: ataClass,
         );
       }

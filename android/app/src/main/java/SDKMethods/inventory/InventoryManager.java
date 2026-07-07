@@ -194,10 +194,10 @@ public class InventoryManager {
                     }
                     // Batch: one inventory pause serves several tags, so the
                     // dominant stop/start overhead is amortized. Normal mode
-                    // keeps batches small (discovery stays responsive) and
-                    // spends only 1 attempt per tag; priority mode ("EPC only"
-                    // tapped) reads bigger batches with 3 attempts.
-                    int maxAttempts = userFetchPriority ? 3 : 1;
+                    // keeps batches small (discovery stays responsive) with 2
+                    // attempts per tag; priority mode ("EPC only" tapped)
+                    // reads bigger batches with 3 attempts.
+                    int maxAttempts = userFetchPriority ? 3 : 2;
                     int batchLimit = userFetchPriority ? 10 : 5;
                     long now = System.currentTimeMillis();
                     int pendingTotal = 0; // tags lacking USER (regardless of range)
@@ -553,6 +553,9 @@ public class InventoryManager {
                     j.put("rssi", t.getRssi() != null ? t.getRssi() : "");
                     j.put("validTid", t.isValidTid());
                     j.put("userMemory", t.getUser() != null ? t.getUser() : "");
+                    // True only when the ToC-declared size is fully captured —
+                    // the 16-word combined-mode slice alone is NOT complete.
+                    j.put("userComplete", !needsUserFetch(t.getUser()));
                     j.put("count", t.getCount() != null ? t.getCount() : "1");
                     arr.put(j);
                 }
