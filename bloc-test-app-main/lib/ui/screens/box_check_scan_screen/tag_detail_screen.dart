@@ -600,16 +600,22 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             // Single/short-ToC tag — render the combined payload through the SAME
             // record card used for Dual/Multi tags, so every detail screen shares
             // one look (icon + title card, human-readable ATA field rows).
-            RecordCardWidget(record: {
-              'descriptor': {
-                'recordType': _singleTagIsUtility(decodedUser) ? 0xFF : 0x00,
-                'recordTypeLabel': _singleTagIsUtility(decodedUser)
-                    ? 'Utility Record'
-                    : 'Birth Record',
+            RecordCardWidget(
+              record: {
+                'descriptor': {
+                  'recordType': _singleTagIsUtility(decodedUser) ? 0xFF : 0x00,
+                  'recordTypeLabel': _singleTagIsUtility(decodedUser)
+                      ? 'Utility Record'
+                      : 'Birth Record',
+                },
+                'payloadText': payloadText,
+                'fields': decodedFields,
               },
-              'payloadText': payloadText,
-              'fields': decodedFields,
-            }),
+              tagTypeLabel: (decodedUser['tocHeader'] is Map)
+                  ? (decodedUser['tocHeader'] as Map)['ataTagTypeLabel']
+                      ?.toString()
+                  : null,
+            ),
             const SizedBox(height: 16),
           ],
           _longPressCopyBox('EPC (Hex)', epcText),

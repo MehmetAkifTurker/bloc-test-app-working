@@ -17,8 +17,13 @@ const TextStyle _valueStyle = TextStyle(
 /// Widget to display a single ATA record (Birth, Lifecycle, Current Data, etc.)
 class RecordCardWidget extends StatelessWidget {
   final Map<String, dynamic> record;
-  
-  const RecordCardWidget({super.key, required this.record});
+
+  /// Optional tag-type badge (e.g. "Dual-Record", "Single Birth Record")
+  /// shown at the right edge of the card header. Typically set on the Birth
+  /// Record card so the tag's declared ToC type is visible at a glance.
+  final String? tagTypeLabel;
+
+  const RecordCardWidget({super.key, required this.record, this.tagTypeLabel});
 
   @override
   Widget build(BuildContext context) {
@@ -97,6 +102,24 @@ class RecordCardWidget extends StatelessWidget {
                 child: Text(recordTypeLabel,
                     style: _cardTitleStyle.copyWith(color: iconColor)),
               ),
+              if (tagTypeLabel != null && tagTypeLabel!.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: _borderLight),
+                  ),
+                  child: Text(
+                    tagTypeLabel!,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: _textSecondary,
+                    ),
+                  ),
+                ),
             ],
           ),
           if (recordFields.isNotEmpty) ...[
@@ -148,13 +171,30 @@ class RecordSectionsWidget extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    // Tag-type badge (from the ToC header) goes on the Birth Record card —
+    // or on the first card when no Birth Record is present.
+    final tocHeader = decodedUser['tocHeader'];
+    final String? tagTypeLabel =
+        tocHeader is Map ? tocHeader['ataTagTypeLabel']?.toString() : null;
+    int badgeIndex = 0;
+    for (int i = 0; i < records.length; i++) {
+      final r = records[i];
+      if (r is Map && (r['descriptor'] as Map?)?['recordType'] == 0x00) {
+        badgeIndex = i;
+        break;
+      }
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (int i = 0; i < records.length; i++)
           if (records[i] is Map) ...[
             if (i > 0) const SizedBox(height: 12),
-            RecordCardWidget(record: records[i] as Map<String, dynamic>),
+            RecordCardWidget(
+              record: records[i] as Map<String, dynamic>,
+              tagTypeLabel: i == badgeIndex ? tagTypeLabel : null,
+            ),
           ],
       ],
     );
