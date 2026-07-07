@@ -42,6 +42,10 @@ public class InventoryManager {
     // the reader.
     private static final long DISCOVERY_QUIET_MS = 2000;
     private volatile long lastNewTagTime = 0;
+    // Priority mode (user tapped "EPC only" in the count bar): fetch USER for
+    // the tags already in the list NOW — skip the discovery-quiet wait and
+    // re-try tags whose 3 attempts were already spent.
+    private volatile boolean userFetchPriority = false;
 
     private InventoryManager() {
         tagList = new java.util.concurrent.ConcurrentHashMap<>();
@@ -70,6 +74,20 @@ public class InventoryManager {
 
     public boolean isStarted() {
         return isStart;
+    }
+
+    /**
+     * "EPC only" segment tapped: focus the reader on filling USER memory of
+     * already-listed tags (no waiting for discovery to go quiet, spent
+     * attempt counters reset so failed tags get retried). "Total" tapped:
+     * back to normal discovery-first scanning.
+     */
+    public void setUserFetchPriority(boolean priority) {
+        if (priority && !userFetchPriority) {
+            userFetchAttempts.clear(); // give exhausted tags a fresh chance
+        }
+        userFetchPriority = priority;
+        Log.i(TAG, "USER-fetch priority => " + (priority ? "ON" : "OFF"));
     }
 
     public boolean isEmptyTags() {
@@ -156,7 +174,7 @@ public class InventoryManager {
             while (isStart) {
                 try {
                     long sinceNewTag = System.currentTimeMillis() - lastNewTagTime;
-                    if (sinceNewTag < DISCOVERY_QUIET_MS) {
+                    if (!userFetchPriority && sinceNewTag < DISCOVERY_QUIET_MS) {
                         // Discovery is hot: give the reader fully to the inventory.
                         if (!loggedWaiting) {
                             Log.i(TAG, "USER-fetch waiting (discovery hot)");

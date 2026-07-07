@@ -119,6 +119,12 @@ class RfidC72Plugin {
     return _channel.invokeMethod('isEmptyTags');
   }
 
+  /// "EPC only" segment tapped => true: focus on reading USER memory of
+  /// already-listed tags. "Total" tapped => false: normal discovery-first scan.
+  static Future<bool?> setUserFetchPriority(bool priority) async {
+    return _channel.invokeMethod('setUserFetchPriority', {'value': priority});
+  }
+
   static Future<bool?> get connect async {
     return _channel.invokeMethod('connect');
   }

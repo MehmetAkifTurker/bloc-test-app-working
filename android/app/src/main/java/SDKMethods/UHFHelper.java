@@ -72,6 +72,10 @@ public class UHFHelper {
         return InventoryManager.getInstance().start(isSingleRead);
     }
 
+    public void setUserFetchPriority(boolean priority) {
+        InventoryManager.getInstance().setUserFetchPriority(priority);
+    }
+
     public boolean stop() {
         return InventoryManager.getInstance().stop();
     }

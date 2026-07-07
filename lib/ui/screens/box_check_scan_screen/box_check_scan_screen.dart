@@ -155,6 +155,15 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
   /// null = show all, true = only EPC+USER read, false = only EPC read.
   bool? _readStateFilter;
 
+  /// Count-bar tap: updates the list filter AND steers the scanner —
+  /// "EPC only" selected puts the native side in USER-fetch priority mode
+  /// (read USER of already-listed tags now, retry failed ones); any other
+  /// selection returns to normal discovery-first scanning.
+  void _setReadStateFilter(bool? value) {
+    setState(() => _readStateFilter = value);
+    RfidC72Plugin.setUserFetchPriority(value == false);
+  }
+
   /// Tags filtered by the selected ATA class only (segment counts are
   /// computed from this set so the breakdown always adds up to the total).
   ///
@@ -890,7 +899,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
                     count: base.length,
                     color: _brandNavy,
                     selected: _readStateFilter == null,
-                    onTap: () => setState(() => _readStateFilter = null),
+                    onTap: () => _setReadStateFilter(null),
                   ),
                   const SizedBox(width: 2),
                   _countSegment(
@@ -899,7 +908,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
                     count: fullCount,
                     color: Colors.green.shade600,
                     selected: _readStateFilter == true,
-                    onTap: () => setState(() => _readStateFilter =
+                    onTap: () => _setReadStateFilter(
                         _readStateFilter == true ? null : true),
                   ),
                   const SizedBox(width: 2),
@@ -909,7 +918,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
                     count: epcOnlyCount,
                     color: Colors.amber.shade700,
                     selected: _readStateFilter == false,
-                    onTap: () => setState(() => _readStateFilter =
+                    onTap: () => _setReadStateFilter(
                         _readStateFilter == false ? null : false),
                   ),
                 ],
@@ -943,6 +952,7 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     RfidC72Plugin.clearRfidTriggerHandlers();
     // ignore: discarded_futures
     RfidC72Plugin.setTriggerMode(ScanTriggerMode.barcode);
+    RfidC72Plugin.setUserFetchPriority(false); // don't leak into next session
     super.dispose();
   }
 

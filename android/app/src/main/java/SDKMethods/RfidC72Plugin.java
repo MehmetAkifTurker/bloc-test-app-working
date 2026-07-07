@@ -181,6 +181,12 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
             case "isEmptyTags":
                 result.success(UHFHelper.getInstance().isEmptyTags());
                 break;
+            case "setUserFetchPriority": {
+                Boolean priority = call.argument("value");
+                UHFHelper.getInstance().setUserFetchPriority(Boolean.TRUE.equals(priority));
+                result.success(true);
+                break;
+            }
             case "close":
                 UHFHelper.getInstance().close();
                 result.success(true);
