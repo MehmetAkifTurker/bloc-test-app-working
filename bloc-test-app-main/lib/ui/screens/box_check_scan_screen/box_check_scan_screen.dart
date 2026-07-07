@@ -44,7 +44,6 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
 
   Timer? _scanTimer;
   bool _scanTickBusy = false;
-  bool _scanStartedByTrigger = false;
 
   // RF power
   double _powerLevel = 5;
@@ -130,17 +129,17 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
     await RfidC72Plugin.setTriggerMode(ScanTriggerMode.rfid);
   }
 
+  // Hold-to-scan semantics that also take over a screen-started scan:
+  // - trigger DOWN: start scanning if idle; if a scan is already running
+  //   (e.g. started from the Start Scan button) just let it continue;
+  // - trigger UP: always stop an active scan.
   Future<void> _handleTriggerDown() async {
-    if (_isScanning) return;
-    _scanStartedByTrigger = true;
+    if (_isScanning) return; // already scanning — keep going while held
     _toggleScan();
   }
 
   Future<void> _handleTriggerUp() async {
-    if (_scanStartedByTrigger && _isScanning) {
-      _toggleScan();
-    }
-    _scanStartedByTrigger = false;
+    if (_isScanning) _toggleScan();
   }
 
   int? _extractAtaClass(String? userHex) {
