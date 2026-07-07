@@ -434,7 +434,11 @@ class _BoxCheckScanBodyState extends State<_BoxCheckScanBody> {
       _tagItems.clear();
       _tagIndexById.clear();
       _lastSeen.clear();
+      // Fresh list = fresh workflow: drop the segment filter, otherwise an
+      // active "EPC only" freeze would keep the emptied list from refilling.
+      _readStateFilter = null;
     });
+    RfidC72Plugin.setUserFetchPriority(false);
   }
 
   void _openDetail(TagItem item) {

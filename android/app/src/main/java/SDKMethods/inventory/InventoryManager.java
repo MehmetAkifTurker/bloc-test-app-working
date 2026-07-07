@@ -201,7 +201,11 @@ public class InventoryManager {
                     int batchLimit = userFetchPriority ? 10 : 5;
                     long now = System.currentTimeMillis();
                     int pendingTotal = 0; // tags lacking USER (regardless of range)
-                    java.util.List<String> batch = new java.util.ArrayList<>();
+                    // candidate EPC -> last sighting; sorted freshest-first below,
+                    // because the most recently seen tag is the most likely to
+                    // still be in front of the antenna when its read runs.
+                    java.util.List<java.util.Map.Entry<String, Long>> candidates =
+                            new java.util.ArrayList<>();
                     for (EPC t : tagList.values()) {
                         String u = t.getUser();
                         String epcKey = t.getEpc();
@@ -213,9 +217,14 @@ public class InventoryManager {
                             // older is likely out of range and just times out.
                             Long seen = lastSeenMs.get(epcKey);
                             if (seen == null || now - seen > IN_RANGE_WINDOW_MS) continue;
-                            batch.add(epcKey);
-                            if (batch.size() >= batchLimit) break;
+                            candidates.add(new java.util.AbstractMap.SimpleEntry<>(epcKey, seen));
                         }
+                    }
+                    candidates.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
+                    java.util.List<String> batch = new java.util.ArrayList<>();
+                    for (java.util.Map.Entry<String, Long> c : candidates) {
+                        batch.add(c.getKey());
+                        if (batch.size() >= batchLimit) break;
                     }
                     if (batch.isEmpty()) {
                         if (pendingTotal > 0 && !loggedWaiting) {
@@ -457,6 +466,12 @@ public class InventoryManager {
 
     private void addEPCToList(String epc, String tid, String user, String rssi) {
         if (TextUtils.isEmpty(epc)) return;
+        // Priority mode freezes the list: the operator asked to fill USER for
+        // the tags ALREADY found ("EPC only" tapped), so unknown EPCs are not
+        // added — otherwise the pending count grows instead of shrinking while
+        // they sweep the same area. Known tags still update below (sighting
+        // stamp, RSSI, count), which the in-range batch selection feeds on.
+        if (userFetchPriority && !tagList.containsKey(epc)) return;
         // Every sighting proves the tag is currently in RF range (see
         // IN_RANGE_WINDOW_MS) — the USER fetcher only targets fresh tags.
         lastSeenMs.put(epc, System.currentTimeMillis());
