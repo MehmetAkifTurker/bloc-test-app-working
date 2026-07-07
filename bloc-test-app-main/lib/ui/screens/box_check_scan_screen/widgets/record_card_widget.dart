@@ -102,16 +102,18 @@ class RecordCardWidget extends StatelessWidget {
           if (recordFields.isNotEmpty) ...[
             const SizedBox(height: 12),
             // Human-readable ATA field names (per ATA Spec 2000 CSDD), matching
-            // the EPC Payload card's label/value row style.
+            // the EPC Payload card's airy label/value row style: a clear gap
+            // between the label column and the value, and roomier line spacing.
             ...orderedKeys.map((k) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  padding: const EdgeInsets.symmetric(vertical: 5),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(
-                        width: 140,
+                        width: 132,
                         child: Text(getTeiFieldLabel(k), style: _labelStyle),
                       ),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: Text(recordFields[k]!,
                             style: _valueStyle.copyWith(fontSize: 13)),

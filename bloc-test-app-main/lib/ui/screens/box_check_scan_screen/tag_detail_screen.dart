@@ -44,14 +44,6 @@ const TextStyle _labelStyle =
     TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _textSecondary);
 const TextStyle _valueStyle = TextStyle(
     fontSize: 14, fontWeight: FontWeight.w500, color: _textPrimary, height: 1.3);
-const TextStyle _chipTitleStyle = TextStyle(
-    fontSize: 11,
-    fontWeight: FontWeight.w700,
-    color: _textSecondary,
-    letterSpacing: 0.5);
-const TextStyle _chipValueStyle =
-    TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: _brandNavy);
-
 class _TagDetailScreenState extends State<TagDetailScreen> {
   // Locate / ses
   bool _isLocating = false;
@@ -334,27 +326,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   }
 
   // ----------------- UI HELPERS -----------------
-  Widget _chip(String title, String value) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: _bgLight,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _borderLight),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title.toUpperCase(), style: _chipTitleStyle),
-            const SizedBox(height: 6),
-            Text(value, style: _chipValueStyle),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _copyAll(String what, String label) async {
     await Clipboard.setData(ClipboardData(text: what));
     if (!mounted) return;
@@ -583,16 +554,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
-          Row(
-            children: [
-              _chip('PN', partNumberFromEpc),
-              const SizedBox(width: 12),
-              _chip('SN', serialNumberFromEpc),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // EPC Payload Card (like Birth/Lifecycle)
+          // EPC Payload Card — identity (PN/SN) + filter + manufacturer together
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -611,6 +573,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
+                _buildInfoRow('PN',
+                    partNumberFromEpc.isEmpty ? '-' : partNumberFromEpc),
+                const SizedBox(height: 8),
+                _buildInfoRow('SN',
+                    serialNumberFromEpc.isEmpty ? '-' : serialNumberFromEpc),
+                const SizedBox(height: 8),
                 _buildInfoRow('Filter', filterLabel),
                 const SizedBox(height: 8),
                 _buildInfoRow('Manufacturer', manufacturerFromEpc),
