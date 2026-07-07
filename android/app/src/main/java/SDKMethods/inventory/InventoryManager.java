@@ -49,6 +49,13 @@ public class InventoryManager {
     private static final long IN_RANGE_WINDOW_MS = 3000;
     private final java.util.concurrent.ConcurrentHashMap<String, Long> lastSeenMs =
             new java.util.concurrent.ConcurrentHashMap<>();
+    // Cooldown after a fetch attempt: a marginal tag that just failed keeps
+    // being re-sighted, and without this it burns all its attempts (and an
+    // inventory pause each) within a second — field logs showed 0/1-batch
+    // storms. Give RF conditions time to change before retrying.
+    private static final long FETCH_RETRY_COOLDOWN_MS = 2000;
+    private final java.util.concurrent.ConcurrentHashMap<String, Long> lastFetchAttemptMs =
+            new java.util.concurrent.ConcurrentHashMap<>();
     // Priority mode (user tapped "EPC only" in the count bar): fetch USER for
     // the tags already in the list NOW — skip the discovery-quiet wait and
     // re-try tags whose 3 attempts were already spent.
@@ -92,6 +99,7 @@ public class InventoryManager {
     public void setUserFetchPriority(boolean priority) {
         if (priority && !userFetchPriority) {
             userFetchAttempts.clear(); // give exhausted tags a fresh chance
+            lastFetchAttemptMs.clear(); // and skip their cooldowns
         }
         userFetchPriority = priority;
         Log.i(TAG, "USER-fetch priority => " + (priority ? "ON" : "OFF"));
@@ -107,6 +115,7 @@ public class InventoryManager {
         }
         userFetchAttempts.clear();
         lastSeenMs.clear();
+        lastFetchAttemptMs.clear();
     }
 
     // ==================== INVENTORY OPERATIONS ====================
@@ -217,9 +226,23 @@ public class InventoryManager {
                             // older is likely out of range and just times out.
                             Long seen = lastSeenMs.get(epcKey);
                             if (seen == null || now - seen > IN_RANGE_WINDOW_MS) continue;
+                            // Recently-failed tags sit out a cooldown.
+                            Long attempted = lastFetchAttemptMs.get(epcKey);
+                            if (attempted != null
+                                    && now - attempted < FETCH_RETRY_COOLDOWN_MS) continue;
                             candidates.add(new java.util.AbstractMap.SimpleEntry<>(epcKey, seen));
                         }
                     }
+                    // Mini-batch guard: with many tags still pending, a 1-2 tag
+                    // batch wastes a full inventory pause on almost nothing.
+                    // Let the resumed inventory refresh sightings for ~300ms
+                    // and build a denser batch instead. (Small fields / the
+                    // tail end fetch whatever is available.)
+                    if (candidates.size() < 3 && pendingTotal > 10) {
+                        Thread.sleep(300);
+                        continue;
+                    }
+
                     candidates.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
                     java.util.List<SDKMethods.reader.MemoryReader.UserReadJob> batch =
                             new java.util.ArrayList<>();
@@ -256,9 +279,11 @@ public class InventoryManager {
                     }
                     loggedWaiting = false;
 
+                    long attemptStamp = System.currentTimeMillis();
                     for (SDKMethods.reader.MemoryReader.UserReadJob job : batch) {
                         Integer prev = userFetchAttempts.get(job.epcHex);
                         userFetchAttempts.put(job.epcHex, prev == null ? 1 : prev + 1);
+                        lastFetchAttemptMs.put(job.epcHex, attemptStamp);
                     }
 
                     java.util.Map<String, String> results =
