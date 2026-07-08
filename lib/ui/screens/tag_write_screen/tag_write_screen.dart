@@ -55,16 +55,16 @@ class OptionalTei {
   const OptionalTei(this.code, this.label, this.maxLen);
 }
 
+// Only BIRTH-STATIC TEIs belong here: values fixed at manufacture that get
+// locked with the Birth Record. Changeable "current/last/recent" TEIs
+// (PNR-current, OVD, DOH, PML, TDN, CND) are NOT here — those live in the
+// rewritable Lifecycle/CDR and are edited on the tag detail screen's
+// "Update Lifecycle" dialog. Putting them in the Birth Record would lock
+// them permanently (ATA Spec: Birth is archival, Lifecycle is rewritable).
 const List<OptionalTei> kOptionalTeis = [
-  OptionalTei('PNR', 'Current Part Number', 32),
-  OptionalTei('OVD', 'Last Overhaul Date (YYYYMMDD)', 8),
-  OptionalTei('DOH', 'Hydrostatic Test Date (YYYYMMDD)', 8),
-  OptionalTei('PML', 'Part Modification Level', 100),
-  OptionalTei('TDN', 'Certificate / Type Design No.', 32),
-  OptionalTei('HAZ', 'Hazardous Material Code', 6),
+  OptionalTei('HAZ', 'Hazardous Material Code (at birth)', 6),
   OptionalTei('LLE', 'Life Limited (0/1)', 1),
   OptionalTei('LOT', 'Lot / Batch Number', 15),
-  OptionalTei('CND', 'Condition (SRV/UNS/UNK)', 3),
   // NOTE: No CAG/SPL option — the CAGE code is already written as MFR from the
   // mandatory manufacturer field, and ATA Spec 2000 (Birth Record, §1.1) permits
   // only ONE of MFR/CAG/SPL per record. Likewise no SEQ/UCN option — the serial

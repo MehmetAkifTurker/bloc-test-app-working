@@ -329,6 +329,8 @@ class RfidC72Plugin {
     String? expirationDate,
     String? certificateNumber,
     String? lastOverhaulDate,
+    String? hydrostaticTestDate,
+    String? conditionCode,
   }) {
     return _channel.invokeMethod<bool>('updateLifecycleRecord', {
       'epcHex': epcHex,
@@ -337,6 +339,8 @@ class RfidC72Plugin {
       'expirationDate': expirationDate,
       'certificateNumber': certificateNumber,
       'lastOverhaulDate': lastOverhaulDate,
+      'hydrostaticTestDate': hydrostaticTestDate,
+      'conditionCode': conditionCode,
     });
   }
 

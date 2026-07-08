@@ -465,6 +465,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         expirationDate: data.expirationDate,
         certificateNumber: data.certificateNumber,
         lastOverhaulDate: data.lastOverhaulDate,
+        hydrostaticTestDate: data.hydrostaticTestDate,
+        conditionCode: data.conditionCode,
       );
 
       if (!mounted) return;

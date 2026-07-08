@@ -322,9 +322,10 @@ public class UHFHelper {
 
     public boolean updateLifecycleRecord(String epcHex, String currentPartNumber,
             String partModLevel, String expirationDate, String certificateNumber,
-            String lastOverhaulDate) {
+            String lastOverhaulDate, String hydrostaticTestDate, String conditionCode) {
         return MemoryWriter.getInstance().updateLifecycleRecord(epcHex, currentPartNumber,
-                partModLevel, expirationDate, certificateNumber, lastOverhaulDate);
+                partModLevel, expirationDate, certificateNumber, lastOverhaulDate,
+                hydrostaticTestDate, conditionCode);
     }
 
     // ==================== MEMORY LOCKING ====================

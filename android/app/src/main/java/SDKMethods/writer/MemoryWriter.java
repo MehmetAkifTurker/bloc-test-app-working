@@ -1719,7 +1719,7 @@ public class MemoryWriter {
 
     public boolean updateLifecycleRecord(String epcHex, String currentPartNumber,
             String partModLevel, String expirationDate, String certificateNumber,
-            String lastOverhaulDate) {
+            String lastOverhaulDate, String hydrostaticTestDate, String conditionCode) {
 
         RFIDWithUHFUART reader = UHFManager.getInstance().getReader();
         if (reader == null)
@@ -1840,6 +1840,14 @@ public class MemoryWriter {
             if (lastOverhaulDate != null && !lastOverhaulDate.isEmpty())
                 lifecyclePayload.append("OVD ")
                         .append(lastOverhaulDate.length() > 8 ? lastOverhaulDate.substring(0, 8) : lastOverhaulDate)
+                        .append("*");
+            if (hydrostaticTestDate != null && !hydrostaticTestDate.isEmpty())
+                lifecyclePayload.append("DOH ").append(
+                        hydrostaticTestDate.length() > 8 ? hydrostaticTestDate.substring(0, 8) : hydrostaticTestDate)
+                        .append("*");
+            if (conditionCode != null && !conditionCode.isEmpty())
+                lifecyclePayload.append("CND ")
+                        .append(conditionCode.length() > 3 ? conditionCode.substring(0, 3) : conditionCode)
                         .append("*");
 
             String lifecycleText = lifecyclePayload.length() > 0 && lifecyclePayload.charAt(0) == '*'

@@ -368,8 +368,10 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 final String exd = call.argument("expirationDate");
                 final String crt = call.argument("certificateNumber");
                 final String ohd = call.argument("lastOverhaulDate");
+                final String doh = call.argument("hydrostaticTestDate");
+                final String cnd = call.argument("conditionCode");
                 runWrite(result, () -> UHFHelper.getInstance().updateLifecycleRecord(
-                        epcHex != null ? epcHex : "", cpn, pml, exd, crt, ohd));
+                        epcHex != null ? epcHex : "", cpn, pml, exd, crt, ohd, doh, cnd));
                 break;
             }
             case "probeUserCapacity": {
