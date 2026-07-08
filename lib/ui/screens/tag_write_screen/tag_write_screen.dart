@@ -422,6 +422,24 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     return req.contains(key) ? '$base *' : base;
   }
 
+  /// Emoji symbol per record type for the Tag Type dropdown:
+  /// 🔒 SRT-B (birth locked, read-only), 🔓 SRT-U (rewritable),
+  /// 🔁 DRT (dual: locked birth + rewritable lifecycle), 📚 MRT (multi-record).
+  String _tagTypeIcon(String recordType) {
+    switch (recordType) {
+      case 'SRT-B':
+        return '🔒';
+      case 'SRT-U':
+        return '🔓';
+      case 'DRT':
+        return '🔁';
+      case 'MRT':
+        return '📚';
+      default:
+        return '🏷️';
+    }
+  }
+
   Future<void> _writeToTag() async {
     if (!_isConnected) {
       _showSnackBar("Not connected to the reader. Try again.");
@@ -809,9 +827,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                           .map((t) => DropdownMenuItem(
                               value: t,
                               child: Text(
-                                t.isBuiltIn
-                                    ? '🔒 ${t.toString()}'
-                                    : t.toString(),
+                                '${_tagTypeIcon(t.recordType)} ${t.toString()}',
                                 overflow: TextOverflow.ellipsis,
                               )))
                           .toList(),

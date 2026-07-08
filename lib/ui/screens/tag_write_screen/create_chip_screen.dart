@@ -50,18 +50,10 @@ class TagType {
   String toString() => '$name • $recordType';
 }
 
-/// Built-in presets per ATA Spec 2000 - cannot be deleted
+/// Built-in presets per ATA Spec 2000 - cannot be deleted.
+/// Ordered smallest/simplest first: SRT (single record) → DRT (dual) → MRT
+/// (multi), matching increasing memory need and record complexity.
 const List<Map<String, dynamic>> kBuiltInTagTypes = [
-  {
-    'name': 'DRT Standard',
-    'recordType': 'DRT',
-    'epcWords': 12,
-    'userWords': 128,
-    'permalockWords': 12,
-    'defaultFilter': 14,
-    'isBuiltIn': true,
-    'enablePermalock': true,
-  },
   {
     'name': 'SRT Birth (Read-Only)',
     'recordType': 'SRT-B',
@@ -84,6 +76,16 @@ const List<Map<String, dynamic>> kBuiltInTagTypes = [
     'defaultFilter': 14,
     'isBuiltIn': true,
     'enablePermalock': false,
+  },
+  {
+    'name': 'DRT Standard',
+    'recordType': 'DRT',
+    'epcWords': 12,
+    'userWords': 128,
+    'permalockWords': 12,
+    'defaultFilter': 14,
+    'isBuiltIn': true,
+    'enablePermalock': true,
   },
   {
     'name': 'MRT Multi-Record',
