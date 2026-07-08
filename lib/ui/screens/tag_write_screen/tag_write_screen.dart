@@ -221,6 +221,9 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     // setState called by parent Future.wait completion
   }
 
+  // Kept for when custom Tag Types are re-enabled (Add/Remove actions are
+  // currently hidden from the Tag Type row).
+  // ignore: unused_element
   Future<void> _saveTagTypes() async {
     final sp = await SharedPreferences.getInstance();
     // Only save user-added tag types (not built-in)
@@ -937,91 +940,10 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                         _selectedFilter = v?.defaultFilter ?? _selectedFilter;
                       }),
                     ),
-                    addAction: IconButton(
-                      tooltip: 'Add Tag Type',
-                      icon: const Icon(Icons.add),
-                      constraints: _iconButtonConstraints,
-                      padding: _iconButtonPadding,
-                      onPressed: () async {
-                        final created = await Navigator.push<TagType>(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const TagTypeManagerPage()),
-                        );
-                        if (created != null) {
-                          setState(() {
-                            _tagTypes.add(created);
-                            _selectedTagType = created;
-                          });
-                          await _saveTagTypes();
-                        }
-                      },
-                    ),
-                    removeAction: IconButton(
-                      tooltip: _selectedTagType?.isBuiltIn == true
-                          ? 'Built-in preset (cannot delete)'
-                          : 'Remove Tag Type',
-                      icon: Icon(
-                        Icons.delete_outline,
-                        color: _selectedTagType?.isBuiltIn == true
-                            ? Colors.grey.shade400
-                            : null,
-                      ),
-                      constraints: _iconButtonConstraints,
-                      padding: _iconButtonPadding,
-                      onPressed: _selectedTagType?.isBuiltIn == true
-                          ? () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                      'Built-in presets cannot be deleted'),
-                                  backgroundColor: Colors.orange,
-                                ),
-                              );
-                            }
-                          : () async {
-                              // Count non-built-in types
-                              final userTypes =
-                                  _tagTypes.where((t) => !t.isBuiltIn).length;
-                              if (userTypes <= 0) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content:
-                                          Text('No custom types to delete')),
-                                );
-                                return;
-                              }
-                              final ok = await showDialog<bool>(
-                                context: context,
-                                builder: (ctx) => AlertDialog(
-                                  title: const Text('Remove Tag Type'),
-                                  content: Text(
-                                      'Delete "${_selectedTagType?.name}"?'),
-                                  actions: [
-                                    TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, false),
-                                        style: TextButton.styleFrom(
-                                            foregroundColor: _brandNavy),
-                                        child: const Text('Cancel')),
-                                    FilledButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, true),
-                                        style: FilledButton.styleFrom(
-                                            backgroundColor: _brandNavy),
-                                        child: const Text('Delete')),
-                                  ],
-                                ),
-                              );
-                              if (ok == true) {
-                                setState(() {
-                                  _tagTypes.remove(_selectedTagType);
-                                  _selectedTagType = _tagTypes.first;
-                                });
-                                await _saveTagTypes();
-                              }
-                            },
-                    ),
+                    // Add/Remove Tag Type actions intentionally hidden — the
+                    // built-in presets cover the workflow. TagTypeManagerPage
+                    // is kept in code and can be re-wired here if custom types
+                    // are needed again.
                   ),
                   const SizedBox(height: 6),
                   _alignedFieldRow(
