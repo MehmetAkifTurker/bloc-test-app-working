@@ -691,7 +691,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
                   ),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF003B5C),
+                  backgroundColor: const Color(0xFF43A047), // confirm green
                   foregroundColor: Colors.white,
                   elevation: 2,
                   shape: RoundedRectangleBorder(

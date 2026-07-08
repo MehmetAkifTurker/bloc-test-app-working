@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 const Color _brandNavy = Color(0xFF003B5C);
+// Confirm/commit action green (matches scan Start button & Write To Tag).
+const Color _confirmGreen = Color(0xFF43A047);
 
 String _fmtDate(DateTime d) =>
     '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
@@ -219,7 +221,7 @@ Future<LifecycleUpdateData?> showUpdateLifecycleDialog(
                 ElevatedButton(
                   onPressed: () => Navigator.pop(ctx, true),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _brandNavy,
+                    backgroundColor: _confirmGreen,
                     foregroundColor: Colors.white,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(

@@ -333,7 +333,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
               child: const Text('Cancel')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text.trim().toUpperCase()),
-            style: FilledButton.styleFrom(backgroundColor: _brandNavy),
+            style: FilledButton.styleFrom(backgroundColor: _confirmGreen),
             child: const Text('Add'),
           ),
         ],
