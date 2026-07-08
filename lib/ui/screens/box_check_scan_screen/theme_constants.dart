@@ -5,8 +5,11 @@
 import 'package:flutter/material.dart';
 
 /// Brand colors
-const Color kBrandNavy = Color(0xFF003B5C);
+const Color kBrandNavy = Color(0xFF003B5C); // primary accent, body text
 const Color kBrandNavyLight = Color(0xFF1A5276);
+const Color kBrandRed = Color(0xFFEF2E1F); // app-bar / firma red
+const Color kConfirmGreen = Color(0xFF43A047); // confirm/commit actions
+const Color kDangerRed = Color(0xFFE53935); // stop/destructive actions
 
 /// Background colors
 const Color kBgLight = Color(0xFFFAFBFC);

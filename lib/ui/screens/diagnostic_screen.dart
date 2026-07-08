@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:rfid_manager/java_comm/rfid_c72_plugin.dart';
+import 'package:rfid_manager/ui/router/app_bar.dart';
 
 class DiagnosticScreen extends StatefulWidget {
   const DiagnosticScreen({super.key});
@@ -72,7 +73,7 @@ class _DiagnosticScreenState extends State<DiagnosticScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('RFID Diagnostic')),
+      appBar: commonAppBar(context, 'RFID DIAGNOSTIC', showBack: true),
       body: Column(
         children: [
           Padding(
