@@ -908,8 +908,16 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                   ),
                 ),
                 inputDecorationTheme: InputDecorationTheme(
+                  // Keep every field label pinned above the field (small,
+                  // navy) whether the field is filled or empty — otherwise
+                  // filled fields show a small navy floated label while empty
+                  // ones show a large centered grey label, which reads as
+                  // inconsistent (e.g. Part Number vs Item Description).
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
                   labelStyle: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: _brandNavy),
                   floatingLabelStyle: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
