@@ -103,6 +103,9 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
       BoxConstraints.tightFor(width: 40, height: 40);
   static const EdgeInsets _iconButtonPadding = EdgeInsets.zero;
   static const Color _brandNavy = Color(0xFF003B5C);
+  // Confirm/primary-action green, matching the scan screen's Start button
+  // (Colors.green.shade600) so "commit" actions look the same app-wide.
+  static const Color _confirmGreen = Color(0xFF43A047);
 
   // Layout constants for consistent alignment
   static const double _actionSlotSize = 40.0;
@@ -1168,9 +1171,9 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
           width: double.infinity,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: _brandNavy,
+              backgroundColor: _confirmGreen,
               foregroundColor: Colors.white,
-              disabledBackgroundColor: _brandNavy.withOpacity(0.5),
+              disabledBackgroundColor: _confirmGreen.withOpacity(0.5),
               shape: const StadiumBorder(),
               fixedSize: const Size.fromHeight(52),
               textStyle: const TextStyle(

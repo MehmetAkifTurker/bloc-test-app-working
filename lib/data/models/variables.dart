@@ -4,7 +4,9 @@ bool advancedView = false;
 bool advancedViewForBoxSlaves = false;
 int devCounter = 0;
 
-Color titleTextAndIconColor = Colors.white70;
+// App bar: firma kırmızısı zemin + tam opak THY beyazı logo/başlık
+// (eski white70 soluk görünüyordu).
+Color titleTextAndIconColor = Colors.white;
 Color titleBackgroundColor = const Color.fromRGBO(239, 46, 31, 1);
 
 Color titleTextAndIconColorDeactive = Colors.grey;
