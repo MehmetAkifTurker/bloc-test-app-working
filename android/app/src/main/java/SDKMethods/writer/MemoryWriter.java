@@ -62,6 +62,190 @@ public class MemoryWriter {
         return instance;
     }
 
+    // ==================== RADIO SAFETY ====================
+
+    /**
+     * Quiesce every other radio user before a write. Continuous inventory
+     * (and its background USER-fetch batches) or a locate polling loop
+     * running concurrently with writeData crashes the native SDK lib — and
+     * dying mid-write can leave a half-programmed tag. Scanning is NOT
+     * auto-resumed afterwards: a write means the operator is on the write
+     * screen; the scan screen restarts inventory itself.
+     *
+     * Callers must invoke this while holding the MemoryReader monitor (see
+     * RfidC72Plugin.runWrite) so in-flight reads finish first.
+     */
+    public void quiesceRadioForWrite() {
+        try {
+            SDKMethods.location.LocationManager lm =
+                    SDKMethods.location.LocationManager.getInstance();
+            if (lm.isLocating()) {
+                Log.w(TAG, "write: locate loop active — stopping it");
+                lm.stopLocation();
+            }
+        } catch (Exception ignore) {
+        }
+        try {
+            if (InventoryManager.getInstance().isStarted()) {
+                Log.w(TAG, "write: continuous inventory active — stopping it");
+                InventoryManager.getInstance().stop();
+                Thread.sleep(80);
+            }
+        } catch (Exception ignore) {
+        }
+    }
+
+    /** Log the module's error code after a failed write op (diagnostics). */
+    private void logWriteErr(String what) {
+        try {
+            RFIDWithUHFUART r = UHFManager.getInstance().getReader();
+            if (r != null) Log.w(TAG, what + " failed, errCode=" + r.getErrCode());
+        } catch (Throwable ignore) {
+        }
+    }
+
+    /**
+     * Write USER-bank words with one automatic retry. A transient RF glitch
+     * shouldn't abort a multi-chunk write and strand a half-programmed tag;
+     * the second attempt lands ~60ms later on different channel conditions.
+     */
+    private boolean writeUserWords(RFIDWithUHFUART reader, int ptr, int cnt,
+            String hex, String label) {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                if (reader.writeData("00000000", RFIDWithUHFUART.Bank_USER, ptr, cnt, hex)) {
+                    return true;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, label + " write exception: " + e.getMessage());
+            }
+            logWriteErr(label + " @word " + ptr + " (" + cnt + "w) attempt " + (attempt + 1));
+            try {
+                Thread.sleep(60);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    // ==================== WRITE VERIFICATION ====================
+    // The SDK's write booleans are not trustworthy on this hardware (same
+    // class of bug as setPower returning SUCCESS while not applied), so every
+    // write is verified by reading back. A verified write is the only write
+    // that counts.
+
+    /** Re-inventory the tag and check it now carries the EPC we wrote. */
+    private boolean verifyEpcWrite(RFIDWithUHFUART reader, String writtenEpcHex) {
+        String expected = writtenEpcHex.toUpperCase(Locale.ROOT);
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                UHFTAGInfo info = reader.inventorySingleTag();
+                if (info != null && info.getEPC() != null) {
+                    String got = info.getEPC().toUpperCase(Locale.ROOT);
+                    if (got.startsWith(expected) || expected.startsWith(got)) {
+                        Log.i(TAG, "✅ EPC verify OK (" + got.length() / 4 + "w)");
+                        return true;
+                    }
+                    Log.w(TAG, "EPC verify mismatch: wrote " + expected + " read " + got);
+                }
+                Thread.sleep(60);
+            } catch (Exception ignore) {
+            }
+        }
+        Log.e(TAG, "❌ EPC verify FAILED after 3 attempts");
+        return false;
+    }
+
+    /**
+     * Read back the first totalWords of USER memory (nearest tag — same
+     * addressing the write used) and compare with what we wrote.
+     */
+    private boolean verifyUserWrite(RFIDWithUHFUART reader, String expectedHex, int totalWords) {
+        try {
+            String expected = expectedHex.toUpperCase(Locale.ROOT);
+            StringBuilder readBack = new StringBuilder();
+            int offset = 0;
+            while (offset < totalWords) {
+                int n = Math.min(32, totalWords - offset);
+                String chunk = null;
+                for (int r = 0; r < 2 && (chunk == null || chunk.isEmpty()); r++) {
+                    chunk = reader.readData("00000000", RFIDWithUHFUART.Bank_USER, offset, n);
+                    if (chunk == null || chunk.isEmpty()) Thread.sleep(40);
+                }
+                if (chunk == null || chunk.isEmpty()) {
+                    Log.e(TAG, "❌ USER verify: read-back failed @word " + offset);
+                    return false;
+                }
+                readBack.append(chunk);
+                offset += n;
+            }
+            String got = readBack.toString().toUpperCase(Locale.ROOT);
+            int cmpLen = Math.min(got.length(), expected.length());
+            if (got.regionMatches(0, expected, 0, cmpLen) && cmpLen == expected.length()) {
+                Log.i(TAG, "✅ USER verify OK (" + totalWords + "w)");
+                return true;
+            }
+            // Diagnostics: first differing word
+            int diffWord = -1;
+            for (int i = 0; i < cmpLen; i += 4) {
+                int end = Math.min(i + 4, cmpLen);
+                if (!got.regionMatches(0 + i, expected, i, end - i)) {
+                    diffWord = i / 4;
+                    break;
+                }
+            }
+            Log.e(TAG, "❌ USER verify MISMATCH @word " + diffWord
+                    + " (readBack " + got.length() / 4 + "w vs expected "
+                    + expected.length() / 4 + "w)");
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "USER verify error: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Query block-permalock state (ReadLock=0) and confirm the requested
+     * blocks now read as locked. Permalock is irreversible — reporting
+     * success without this check would be a lie the operator can't undo.
+     */
+    private boolean verifyPermalock(RFIDWithUHFUART reader, String pwd,
+            String filterEpc, int startBlock, int blockCount, byte[] expectedMask) {
+        try {
+            byte[] got = new byte[Math.max(expectedMask.length, 2)];
+            boolean ok;
+            if (filterEpc != null && !filterEpc.isEmpty()) {
+                int epcBits = filterEpc.length() * 4;
+                ok = reader.uhfBlockPermalock(pwd,
+                        RFIDWithUHFUART.Bank_EPC, 32, epcBits, filterEpc,
+                        0, RFIDWithUHFUART.Bank_USER, startBlock, blockCount, got);
+            } else {
+                ok = reader.uhfBlockPermalock(pwd,
+                        0, 0, 0, "",
+                        0, RFIDWithUHFUART.Bank_USER, startBlock, blockCount, got);
+            }
+            if (!ok) {
+                Log.w(TAG, "permalock verify: status read failed");
+                return false;
+            }
+            for (int i = 0; i < expectedMask.length; i++) {
+                if ((got[i] & expectedMask[i]) != expectedMask[i]) {
+                    Log.e(TAG, "❌ PERMALOCK verify: blocks not locked (mask byte "
+                            + i + ": got " + String.format("%02X", got[i])
+                            + " want " + String.format("%02X", expectedMask[i]) + ")");
+                    return false;
+                }
+            }
+            Log.i(TAG, "✅ PERMALOCK verify OK");
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "permalock verify error: " + e.getMessage());
+            return false;
+        }
+    }
+
     /**
      * ATA Spec 2000 Birth Record serial TEI, selected by the UID Construct
      * (Birth Record §1.1 item 4):
@@ -384,9 +568,15 @@ public class MemoryWriter {
             }
 
             if (success) {
-                Log.i(TAG, "✅ PERMALOCK: Successfully locked " + blockCount + " blocks");
+                // Permalock is irreversible — confirm the blocks actually
+                // read back as locked before reporting success.
+                success = verifyPermalock(reader, pwd, currentEpc, startBlock, blockCount, mask);
+            }
+            if (success) {
+                Log.i(TAG, "✅ PERMALOCK: Successfully locked " + blockCount + " blocks (verified)");
             } else {
-                Log.e(TAG, "❌ PERMALOCK: Failed to lock blocks");
+                logWriteErr("uhfBlockPermalock (" + blockCount + " blocks)");
+                Log.e(TAG, "❌ PERMALOCK: Failed to lock (or verify) blocks");
             }
 
             return success;
@@ -606,31 +796,12 @@ public class MemoryWriter {
             boolean success = reader.writeDataToEpc(pwd, epcHex.toString());
 
             if (success) {
-                Log.i(TAG, "✅ Construct1 EPC written successfully");
-
-                // Verify by reading back
-                try {
-                    Thread.sleep(100);
-                    UHFTAGInfo verifyTag = reader.inventorySingleTag();
-                    if (verifyTag != null) {
-                        String readEpc = verifyTag.getEPC();
-                        Log.d(TAG, "📖 Verify read: " + readEpc);
-                        if (readEpc != null && readEpc.toUpperCase()
-                                .startsWith(epcHex.substring(0, Math.min(12, epcHex.length())))) {
-                            Log.i(TAG, "✓ EPC verified successfully");
-                        } else {
-                            Log.w(TAG,
-                                    "⚠️ EPC verify mismatch! Expected: " + epcHex.substring(0, 12) + "..., Got: "
-                                            + (readEpc != null ? readEpc.substring(0, Math.min(12, readEpc.length()))
-                                                    : "null"));
-                        }
-                    } else {
-                        Log.w(TAG, "⚠️ Could not read tag for verification (may be out of range)");
-                    }
-                } catch (Exception e) {
-                    Log.d(TAG, "Verify failed: " + e.getMessage());
-                }
+                Log.i(TAG, "✅ Construct1 EPC written, verifying...");
+                // Gate on read-back: an unverified EPC write does not count
+                // (the old code only logged a warning on mismatch).
+                success = verifyEpcWrite(reader, epcHex.toString());
             } else {
+                logWriteErr("programConstruct1Epc writeDataToEpc");
                 Log.e(TAG, "❌ Construct1 EPC write failed");
                 Log.e(TAG, "  Possible reasons:");
                 Log.e(TAG, "    1. Tag out of range (move closer)");
@@ -699,7 +870,23 @@ public class MemoryWriter {
                 epcHex.append('0');
 
             String pwd = (accessPwdHex == null || accessPwdHex.isEmpty()) ? "00000000" : accessPwdHex;
-            return reader.writeDataToEpc(pwd, epcHex.toString());
+            boolean ok = reader.writeDataToEpc(pwd, epcHex.toString());
+            if (!ok) {
+                logWriteErr("programConstruct2Epc writeDataToEpc");
+                try {
+                    Thread.sleep(60);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+                ok = reader.writeDataToEpc(pwd, epcHex.toString());
+                if (!ok) {
+                    logWriteErr("programConstruct2Epc writeDataToEpc (retry)");
+                    return false;
+                }
+            }
+            // Only a read-back-verified EPC counts as written.
+            return verifyEpcWrite(reader, epcHex.toString());
         } catch (Exception e) {
             Log.e(TAG, "programConstruct2Epc error", e);
             return false;
@@ -890,8 +1077,9 @@ public class MemoryWriter {
                 return false;
             }
 
-            boolean success = reader.writeData("00000000", 3, 0, dataWords, userMemHex);
-            Log.i(TAG, "Write result: " + (success ? "SUCCESS" : "FAILED"));
+            boolean success = writeUserWords(reader, 0, dataWords, userMemHex, "SRT");
+            if (success) success = verifyUserWrite(reader, userMemHex, dataWords);
+            Log.i(TAG, "Write result: " + (success ? "SUCCESS (verified)" : "FAILED"));
 
             return success;
         } catch (Exception e) {
@@ -1105,7 +1293,7 @@ public class MemoryWriter {
                     int hexLength = chunkSize * 4;
 
                     String chunkHex = fullHex.substring(hexOffset, Math.min(hexOffset + hexLength, fullHex.length()));
-                    success = reader.writeData("00000000", 3, wordsWritten, chunkSize, chunkHex);
+                    success = writeUserWords(reader, wordsWritten, chunkSize, chunkHex, "DRT chunk");
 
                     if (!success)
                         break;
@@ -1116,10 +1304,12 @@ public class MemoryWriter {
                     }
                 }
             } else {
-                success = reader.writeData("00000000", 3, 0, totalWords, fullHex);
+                success = writeUserWords(reader, 0, totalWords, fullHex, "DRT");
             }
 
-            Log.i(TAG, success ? "✅ DUAL-RECORD: Write successful!" : "❌ DUAL-RECORD: Write failed!");
+            if (success) success = verifyUserWrite(reader, fullHex, totalWords);
+            Log.i(TAG, success ? "✅ DUAL-RECORD: Write successful (verified)!"
+                    : "❌ DUAL-RECORD: Write failed!");
             return success;
 
         } catch (Exception e) {
@@ -1324,7 +1514,7 @@ public class MemoryWriter {
                     int hexLength = chunkSize * 4;
 
                     String chunkHex = fullHex.substring(hexOffset, Math.min(hexOffset + hexLength, fullHex.length()));
-                    success = reader.writeData("00000000", 3, wordsWritten, chunkSize, chunkHex);
+                    success = writeUserWords(reader, wordsWritten, chunkSize, chunkHex, "MRT chunk");
 
                     if (!success)
                         break;
@@ -1335,10 +1525,12 @@ public class MemoryWriter {
                     }
                 }
             } else {
-                success = reader.writeData("00000000", 3, 0, totalWords, fullHex);
+                success = writeUserWords(reader, 0, totalWords, fullHex, "MRT");
             }
 
-            Log.i(TAG, success ? "✅ MULTI-RECORD: Write successful!" : "❌ MULTI-RECORD: Write failed!");
+            if (success) success = verifyUserWrite(reader, fullHex, totalWords);
+            Log.i(TAG, success ? "✅ MULTI-RECORD: Write successful (verified)!"
+                    : "❌ MULTI-RECORD: Write failed!");
             return success;
 
         } catch (Exception e) {
@@ -1497,7 +1689,7 @@ public class MemoryWriter {
             String newCdrRecordHex = cdrDataNoCrc +
                     String.format("%04X", AtaEncodingUtils.calculateCrc16Ccitt(cdrDataNoCrc));
 
-            boolean success = reader.writeData("00000000", 3, cdrAddr, cdrRecordSize, newCdrRecordHex);
+            boolean success = writeUserWords(reader, cdrAddr, cdrRecordSize, newCdrRecordHex, "CDR");
             Log.i(TAG, success ? "✅ CDR-UPDATE: Success!" : "❌ CDR-UPDATE: Failed!");
 
             return success;
@@ -1675,7 +1867,8 @@ public class MemoryWriter {
                     String chunkHex = newLifecycleRecordHex.substring(hexOffset,
                             Math.min(hexOffset + hexLength, newLifecycleRecordHex.length()));
 
-                    success = reader.writeData("00000000", 3, lifecycleAddr + wordsWritten, chunkSize, chunkHex);
+                    success = writeUserWords(reader, lifecycleAddr + wordsWritten, chunkSize,
+                            chunkHex, "LIFECYCLE chunk");
                     Log.d(TAG, "📝 Chunk write: addr=" + (lifecycleAddr + wordsWritten) +
                             ", size=" + chunkSize + ", result=" + success);
 
@@ -1688,7 +1881,8 @@ public class MemoryWriter {
                     }
                 }
             } else {
-                success = reader.writeData("00000000", 3, lifecycleAddr, lifecycleRecordSize, newLifecycleRecordHex);
+                success = writeUserWords(reader, lifecycleAddr, lifecycleRecordSize,
+                        newLifecycleRecordHex, "LIFECYCLE");
             }
 
             Log.i(TAG, success ? "✅ LIFECYCLE-UPDATE: Success!" : "❌ LIFECYCLE-UPDATE: Failed!");

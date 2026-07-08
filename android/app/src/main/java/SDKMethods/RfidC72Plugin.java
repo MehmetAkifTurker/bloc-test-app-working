@@ -1,6 +1,7 @@
 package SDKMethods;
 
 import android.content.Context;
+import android.util.Log;
 
 import io.reactivex.Observable;
 import io.reactivex.Observer;
@@ -156,6 +157,31 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
         handleMethods(call, result);
     }
 
+    /**
+     * Run a tag-write operation safely:
+     *  - on a background thread (writes take up to seconds; blocking the
+     *    platform thread risks ANR),
+     *  - holding the MemoryReader monitor (every radio user serializes on it;
+     *    concurrent native SDK calls from two threads SIGSEGV the lib),
+     *  - after quiescing continuous inventory and any locate loop (writing
+     *    mid-inventory is unreliable, and dying mid-write can corrupt a tag).
+     * The result is delivered on the main thread; errors surface as false.
+     */
+    private void runWrite(final Result result, final java.util.concurrent.Callable<Object> op) {
+        Observable.fromCallable(() -> {
+                    synchronized (SDKMethods.reader.MemoryReader.getInstance()) {
+                        SDKMethods.writer.MemoryWriter.getInstance().quiesceRadioForWrite();
+                        return op.call();
+                    }
+                })
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(result::success, error -> {
+                    Log.e("RfidC72Plugin", "write op failed: " + error);
+                    result.success(false);
+                });
+    }
+
     private void handleMethods(MethodCall call, Result result) {
         switch (call.method) {
             case "getPlatformVersion":
@@ -249,7 +275,7 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 String partNumber = call.argument("partNumber");
                 String serialNumber = call.argument("serialNumber");
                 if (partNumber != null && serialNumber != null) {
-                    result.success(UHFHelper.getInstance().writeTagADIConstruct2(
+                    runWrite(result, () -> UHFHelper.getInstance().writeTagADIConstruct2(
                             partNumber.toUpperCase(), serialNumber.toUpperCase()));
                 } else {
                     result.error("INVALID_ARGUMENTS", "Part Number and Serial Number required", null);
@@ -262,7 +288,7 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 String manager = call.argument("manager");
                 String accessPwd = call.argument("accessPwd");
                 Integer filter = call.argument("filter");
-                result.success(UHFHelper.getInstance().programConstruct1Epc(
+                runWrite(result, () -> UHFHelper.getInstance().programConstruct1Epc(
                         serialNumber != null ? serialNumber : "",
                         manager != null ? manager : " TG424",
                         accessPwd != null ? accessPwd : "00000000",
@@ -276,7 +302,7 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 String manager = call.argument("manager");
                 String accessPwd = call.argument("accessPwd");
                 Integer filter = call.argument("filter");
-                result.success(UHFHelper.getInstance().programConstruct2Epc(
+                runWrite(result, () -> UHFHelper.getInstance().programConstruct2Epc(
                         partNumber != null ? partNumber : "",
                         serialNumber != null ? serialNumber : "",
                         manager != null ? manager : " TG424",
@@ -325,7 +351,7 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 String manufactureDate = call.argument("manufactureDate");
                 String expireDate = call.argument("expireDate");
                 java.util.Map<String, String> extraFields = call.argument("extraFields");
-                result.success(UHFHelper.getInstance().writeAtaUserMemoryWithPayload(
+                runWrite(result, () -> UHFHelper.getInstance().writeAtaUserMemoryWithPayload(
                         manufacturer != null ? manufacturer : "",
                         productName != null ? productName : "",
                         partNumber != null ? partNumber : "",
@@ -337,13 +363,13 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
             }
             case "updateLifecycleRecord": {
                 String epcHex = call.argument("epcHex");
-                result.success(UHFHelper.getInstance().updateLifecycleRecord(
-                        epcHex != null ? epcHex : "",
-                        call.argument("currentPartNumber"),
-                        call.argument("partModLevel"),
-                        call.argument("expirationDate"),
-                        call.argument("certificateNumber"),
-                        call.argument("lastOverhaulDate")));
+                final String cpn = call.argument("currentPartNumber");
+                final String pml = call.argument("partModLevel");
+                final String exd = call.argument("expirationDate");
+                final String crt = call.argument("certificateNumber");
+                final String ohd = call.argument("lastOverhaulDate");
+                runWrite(result, () -> UHFHelper.getInstance().updateLifecycleRecord(
+                        epcHex != null ? epcHex : "", cpn, pml, exd, crt, ohd));
                 break;
             }
             case "readUserMemory":
@@ -397,7 +423,7 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
             case "setAccessPassword": {
                 String oldPassword = call.argument("oldPassword");
                 String newPassword = call.argument("newPassword");
-                result.success(UHFHelper.getInstance().setAccessPassword(
+                runWrite(result, () -> UHFHelper.getInstance().setAccessPassword(
                         oldPassword != null ? oldPassword : "00000000",
                         newPassword != null ? newPassword : "00000001"));
                 break;
@@ -405,7 +431,7 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
             case "lockUserMemory": {
                 String accessPwd = call.argument("accessPwd");
                 Boolean permanent = call.argument("permanent");
-                result.success(UHFHelper.getInstance().lockUserMemory(
+                runWrite(result, () -> UHFHelper.getInstance().lockUserMemory(
                         accessPwd != null ? accessPwd : "00000000",
                         permanent != null && permanent));
                 break;
@@ -413,7 +439,7 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
             case "lockEpcMemory": {
                 String accessPwd = call.argument("accessPwd");
                 Boolean permanent = call.argument("permanent");
-                result.success(UHFHelper.getInstance().lockEpcMemory(
+                runWrite(result, () -> UHFHelper.getInstance().lockEpcMemory(
                         accessPwd != null ? accessPwd : "00000000",
                         permanent != null && permanent));
                 break;
@@ -422,7 +448,7 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 String accessPwd = call.argument("accessPwd");
                 Integer startWord = call.argument("startWord");
                 Integer wordCount = call.argument("wordCount");
-                result.success(UHFHelper.getInstance().permalockUserBlocks(
+                runWrite(result, () -> UHFHelper.getInstance().permalockUserBlocks(
                         accessPwd != null ? accessPwd : "00000000",
                         startWord != null ? startWord : 0,
                         wordCount != null ? wordCount : 12));
@@ -436,7 +462,7 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                 // Apply the permalock computed by the last USER write (word 0..N),
                 // honoring the in-app Permalock toggle. IRREVERSIBLE.
                 String accessPwd = call.argument("accessPwd");
-                result.success(UHFHelper.getInstance().applyCalculatedPermalock(
+                runWrite(result, () -> UHFHelper.getInstance().applyCalculatedPermalock(
                         accessPwd != null ? accessPwd : "00000000"));
                 break;
             }
