@@ -422,6 +422,57 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     return req.contains(key) ? '$base *' : base;
   }
 
+  /// Compact date-picker field used for the side-by-side Manufacture/Expire
+  /// dates. Clear button lives in the suffix (no separate action column) so
+  /// two of these fit on one row.
+  Widget _dateField({
+    required String label,
+    required DateTime? value,
+    required String display,
+    required ValueChanged<DateTime> onPick,
+    required VoidCallback onClear,
+  }) {
+    return GestureDetector(
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: value ?? DateTime.now(),
+          firstDate: DateTime(2000),
+          lastDate: DateTime(2100),
+          builder: (context, child) => Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: const ColorScheme.light(
+                primary: _brandNavy,
+                onPrimary: Colors.white,
+                surface: Colors.white,
+                onSurface: Colors.black,
+              ),
+            ),
+            child: child!,
+          ),
+        );
+        if (picked != null) onPick(picked);
+      },
+      child: AbsorbPointer(
+        child: TextFormField(
+          controller: TextEditingController(text: display),
+          decoration: InputDecoration(
+            labelText: label,
+            isDense: true,
+            suffixIcon: value == null
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: onClear,
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Emoji symbol per record type for the Tag Type dropdown:
   /// 🔒 SRT-B (birth locked, read-only), 🔓 SRT-U (rewritable),
   /// 🔁 DRT (dual: locked birth + rewritable lifecycle), 📚 MRT (multi-record).
@@ -817,7 +868,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
         body: SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.all(10.0),
+            padding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
             child: Theme(
               data: Theme.of(context).copyWith(
                 // Brand color scheme
@@ -857,7 +908,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: _brandNavy),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
                   focusedBorder: const UnderlineInputBorder(
                     borderSide: BorderSide(color: _brandNavy, width: 2),
                   ),
@@ -972,7 +1023,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                             },
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 6),
                   _alignedFieldRow(
                     field: DropdownButtonFormField<String>(
                       value: _pnList.contains(_selectedPN) ? _selectedPN : null,
@@ -1062,7 +1113,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 6),
                   _alignedFieldRow(
                     field: DropdownButtonFormField<String>(
                       value: _descList.contains(_selectedDesc)
@@ -1104,7 +1155,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 6),
                   _alignedFieldRow(
                     field: DropdownButtonFormField<int>(
                       value: _selectedFilter,
@@ -1140,103 +1191,35 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                           () => _selectedFilter = v ?? _selectedFilter),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  _alignedFieldRow(
-                    field: GestureDetector(
-                      onTap: () async {
-                        DateTime? picked = await showDatePicker(
-                          context: context,
-                          initialDate: _mfgDate ?? DateTime.now(),
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2100),
-                          builder: (context, child) {
-                            return Theme(
-                              data: Theme.of(context).copyWith(
-                                colorScheme: const ColorScheme.light(
-                                  primary: _brandNavy,
-                                  onPrimary: Colors.white,
-                                  surface: Colors.white,
-                                  onSurface: Colors.black,
-                                ),
-                              ),
-                              child: child!,
-                            );
-                          },
-                        );
-                        if (picked != null) setState(() => _mfgDate = picked);
-                      },
-                      child: AbsorbPointer(
-                        child: TextFormField(
-                          controller: TextEditingController(
-                              text: manufactureDateDisplay),
-                          decoration: const InputDecoration(
-                            hintText: 'Manufacture Date (YYYY/MM/DD)',
-                            labelText: 'Manufacture Date',
-                          ),
+                  const SizedBox(height: 8),
+                  // Manufacture + Expire dates side by side to save a row.
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _dateField(
+                          label: 'Manufacture Date',
+                          value: _mfgDate,
+                          display: manufactureDateDisplay,
+                          onPick: (d) => setState(() => _mfgDate = d),
+                          onClear: () => setState(() => _mfgDate = null),
                         ),
                       ),
-                    ),
-                    addAction: IconButton(
-                      tooltip: 'Clear',
-                      icon: const Icon(Icons.close),
-                      constraints: _iconButtonConstraints,
-                      padding: _iconButtonPadding,
-                      onPressed: _mfgDate == null
-                          ? null
-                          : () => setState(() => _mfgDate = null),
-                    ),
-                    removeAction: null,
-                  ),
-                  const SizedBox(height: 12),
-                  _alignedFieldRow(
-                    field: GestureDetector(
-                      onTap: () async {
-                        DateTime? picked = await showDatePicker(
-                          context: context,
-                          initialDate: _expDate ?? DateTime.now(),
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2100),
-                          builder: (context, child) {
-                            return Theme(
-                              data: Theme.of(context).copyWith(
-                                colorScheme: const ColorScheme.light(
-                                  primary: _brandNavy,
-                                  onPrimary: Colors.white,
-                                  surface: Colors.white,
-                                  onSurface: Colors.black,
-                                ),
-                              ),
-                              child: child!,
-                            );
-                          },
-                        );
-                        if (picked != null) setState(() => _expDate = picked);
-                      },
-                      child: AbsorbPointer(
-                        child: TextFormField(
-                          controller:
-                              TextEditingController(text: expireDateDisplay),
-                          decoration: const InputDecoration(
-                            hintText: 'Expire Date (YYYY/MM/DD)',
-                            labelText: 'Expire Date',
-                          ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _dateField(
+                          label: 'Expire Date',
+                          value: _expDate,
+                          display: expireDateDisplay,
+                          onPick: (d) => setState(() => _expDate = d),
+                          onClear: () => setState(() => _expDate = null),
                         ),
                       ),
-                    ),
-                    addAction: IconButton(
-                      tooltip: 'Clear',
-                      icon: const Icon(Icons.close),
-                      constraints: _iconButtonConstraints,
-                      padding: _iconButtonPadding,
-                      onPressed: _expDate == null
-                          ? null
-                          : () => setState(() => _expDate = null),
-                    ),
-                    removeAction: null,
+                    ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
                   _buildExtraFieldsSection(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Expanded(
