@@ -264,6 +264,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:rfid_manager/java_comm/rfid_c72_plugin.dart';
 import 'package:rfid_manager/ui/router/app_bar.dart';
+import 'package:rfid_manager/ui/screens/box_check_scan_screen/theme_constants.dart';
 
 class QrScanScreen extends StatefulWidget {
   const QrScanScreen({super.key});
@@ -438,6 +439,8 @@ class _QrScanScreenState extends State<QrScanScreen> {
                     label: Text(_scanning ? 'Stop' : 'Start Scan'),
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                       backgroundColor: _scanning
                           ? Colors.red.shade600
                           : Colors.green.shade600,
@@ -456,6 +459,9 @@ class _QrScanScreenState extends State<QrScanScreen> {
                     label: const Text('Clear'),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      foregroundColor: kBrandNavy,
                     ),
                   ),
                 ),
