@@ -398,6 +398,30 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     }
   }
 
+  /// Birth-Record fields that are MANDATORY for a given record type
+  /// (ATA Spec 2000 Table 3/5/8). Keys: 'MFR', 'PN', 'SER', 'PDT'.
+  /// - SRT-U (Utility): nothing required — full Birth Record is optional.
+  /// - MRT: MFR + PN + SER + PDT (PDT is Table 8 mandatory).
+  /// - SRT-B / DRT: MFR + PN + SER.
+  Set<String> _requiredFields(String recordType) {
+    switch (recordType) {
+      case 'SRT-U':
+        return <String>{};
+      case 'MRT':
+        return {'MFR', 'PN', 'SER', 'PDT'};
+      default: // SRT-B, DRT
+        return {'MFR', 'PN', 'SER'};
+    }
+  }
+
+  /// Field label with a trailing "*" when the field is mandatory for the
+  /// currently selected record type. Recomputed on every build so it tracks
+  /// tag-type changes.
+  String _fieldLabel(String base, String key) {
+    final req = _requiredFields(_selectedTagType?.recordType ?? 'DRT');
+    return req.contains(key) ? '$base *' : base;
+  }
+
   Future<void> _writeToTag() async {
     if (!_isConnected) {
       _showSnackBar("Not connected to the reader. Try again.");
@@ -407,12 +431,31 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     final String partNumber = _selectedPN.trim().toUpperCase();
     final String serialNumber =
         serialNumberController.text.trim().toUpperCase();
+    final String recordType = _selectedTagType?.recordType ?? 'DRT';
+    final Set<String> required = _requiredFields(recordType);
 
-    if (partNumber.isEmpty || serialNumber.isEmpty) {
-      _showSnackBar("Please enter both Part Number and Serial Number.");
+    // Mandatory-field checks depend on the record type (ATA Spec Table 3/5/8):
+    // SRT-U (Utility) requires nothing; MRT additionally requires PDT.
+    if (required.contains('MFR') && _selectedManufacturer.trim().isEmpty) {
+      _showSnackBar("Manufacturer (CAGE) is required for $recordType tags.");
       return;
     }
-    // ATA Spec 2000 TEI field length validation (Table 3, 5, 8)
+    if (required.contains('PN') && partNumber.isEmpty) {
+      _showSnackBar("Part Number is required for $recordType tags.");
+      return;
+    }
+    if (required.contains('SER') && serialNumber.isEmpty) {
+      _showSnackBar("Serial Number is required for $recordType tags.");
+      return;
+    }
+    if (required.contains('PDT') && _selectedDesc.trim().isEmpty) {
+      _showSnackBar(
+          "Item Description (PDT) is required for MRT tags (ATA Spec Table 8).");
+      return;
+    }
+
+    // ATA Spec 2000 TEI field length validation (applies to whatever is
+    // entered, regardless of record type).
     if (partNumber.length > 32) {
       _showSnackBar(
           "Part Number (PNR) is too long (max 32 chars per ATA Spec).");
@@ -423,7 +466,9 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
           "Serial Number (SEQ) is too long (max 30 chars per ATA Spec).");
       return;
     }
-    if (_selectedManufacturer.trim().length != 5) {
+    // CAGE, if provided, must be exactly 5 chars (mandatory-ness handled above).
+    if (_selectedManufacturer.trim().isNotEmpty &&
+        _selectedManufacturer.trim().length != 5) {
       _showSnackBar(
           "CAGE Code (MFR) must be exactly 5 characters per ATA Spec.");
       return;
@@ -431,13 +476,6 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     if (_selectedDesc.length > 32) {
       _showSnackBar(
           "Part Description (PDT) is too long (max 32 chars per ATA Spec).");
-      return;
-    }
-    // ATA Spec Table 8: PDT (Part Description) is MANDATORY for the Multi-
-    // Record Format (it is only conditional for DRT/SRT).
-    if (_selectedTagType?.recordType == 'MRT' && _selectedDesc.trim().isEmpty) {
-      _showSnackBar(
-          "Item Description (PDT) is required for MRT tags (ATA Spec Table 8).");
       return;
     }
     // Validate date format (YYYYMMDD = 8 chars)
@@ -873,7 +911,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                     field: DropdownButtonFormField<String>(
                       value: _pnList.contains(_selectedPN) ? _selectedPN : null,
                       decoration:
-                          const InputDecoration(labelText: "Part Number"),
+                          InputDecoration(labelText: _fieldLabel("Part Number", "PN")),
                       isDense: true,
                       menuMaxHeight: _menuMaxHeight,
                       items: _pnList
@@ -911,8 +949,8 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                   _alignedFieldRow(
                     field: TextFormField(
                       controller: serialNumberController,
-                      decoration: const InputDecoration(
-                        labelText: 'Serial Number',
+                      decoration: InputDecoration(
+                        labelText: _fieldLabel('Serial Number', 'SER'),
                       ),
                     ),
                   ),
@@ -922,8 +960,8 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                           ? _selectedManufacturer
                           : null,
                       menuMaxHeight: _menuMaxHeight,
-                      decoration:
-                          const InputDecoration(labelText: "Manufacturer"),
+                      decoration: InputDecoration(
+                          labelText: _fieldLabel("Manufacturer", "MFR")),
                       isDense: true,
                       items: _mfrList
                           .map(
@@ -966,7 +1004,7 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                           : null,
                       menuMaxHeight: _menuMaxHeight,
                       decoration:
-                          const InputDecoration(labelText: "Item Description"),
+                          InputDecoration(labelText: _fieldLabel("Item Description", "PDT")),
                       isDense: true,
                       items: _descList
                           .map(
