@@ -974,8 +974,11 @@ public class MemoryWriter {
             return false;
 
         try {
-            // Build payload (ATA Spec 2000 - preferred order with length validation)
-            // Order: MFR → SER → PNO → UIC → PDT → DMF → EXP
+            // Build payload (ATA Spec 2000 Table 3 - Single Birth-Record).
+            // Order: MFR → SER/SEQ → PNR → PNO → UIC → PDT → DMF → EXP
+            // PNR (Current Part Number) is MANDATORY (Table 3 No.3); PNO
+            // (Original) is required by Construct 2 (SEQ). At initial encoding
+            // current == original, so both carry the same UI value.
             StringBuilder payloadBuilder = new StringBuilder();
             if (manufacturer != null && !manufacturer.isEmpty())
                 payloadBuilder.append("*MFR ")
@@ -983,9 +986,12 @@ public class MemoryWriter {
             if (serialNumber != null && !serialNumber.isEmpty())
                 payloadBuilder.append("*").append(serialTei()).append(" ")
                         .append(serialNumber.length() > 30 ? serialNumber.substring(0, 30) : serialNumber);
-            if (partNumber != null && !partNumber.isEmpty())
-                payloadBuilder.append("*PNO ")
-                        .append(partNumber.length() > 32 ? partNumber.substring(0, 32) : partNumber);
+            if (partNumber != null && !partNumber.isEmpty()) {
+                String pn = partNumber.length() > 32 ? partNumber.substring(0, 32) : partNumber;
+                payloadBuilder.append("*PNR ").append(pn); // Current PN (mandatory)
+                if (currentUidConstruct == 2)
+                    payloadBuilder.append("*PNO ").append(pn); // Original PN (Construct 2)
+            }
             payloadBuilder.append("*UIC ").append(currentUidConstruct);
             if (productName != null && !productName.isEmpty())
                 payloadBuilder.append("*PDT ")
@@ -1001,6 +1007,7 @@ public class MemoryWriter {
                     ? payloadBuilder.substring(1)
                     : payloadBuilder.toString();
             ataPayloadText = appendExtraTeis(ataPayloadText); // optional extra ATA TEIs
+            Log.i(TAG, "📝 SRT Birth TEIs: " + ataPayloadText); // audit trail of written fields
 
             // Encode payload
             StringBuilder payload6bit = new StringBuilder();
@@ -1099,8 +1106,12 @@ public class MemoryWriter {
         try {
             Log.i(TAG, "📝 DUAL-RECORD: Starting write");
 
-            // Build Birth Record payload (ATA Spec 2000 Table 5 - preferred order)
-            // Order: MFR → SER → PNO → UIC → PDT → DMF (EXP goes to Lifecycle in future)
+            // Build Birth Record payload (ATA Spec 2000 Table 5).
+            // Order: MFR → SER/SEQ → PNR → PNO → UIC → PDT → DMF → EXP
+            // PNR (Current Part Number) is MANDATORY (Table 5 No.3); PNO
+            // (Original Part Number, No.25) is required by Construct 2 (SEQ,
+            // see requirement 4). At initial encoding current == original, so
+            // both carry the same UI "Part Number" value.
             StringBuilder birthPayload = new StringBuilder();
             if (manufacturer != null && !manufacturer.isEmpty())
                 birthPayload.append("MFR ")
@@ -1108,9 +1119,12 @@ public class MemoryWriter {
             if (serialNumber != null && !serialNumber.isEmpty())
                 birthPayload.append(serialTei()).append(" ")
                         .append(serialNumber.length() > 30 ? serialNumber.substring(0, 30) : serialNumber).append("*");
-            if (partNumber != null && !partNumber.isEmpty())
-                birthPayload.append("PNO ").append(partNumber.length() > 32 ? partNumber.substring(0, 32) : partNumber)
-                        .append("*");
+            if (partNumber != null && !partNumber.isEmpty()) {
+                String pn = partNumber.length() > 32 ? partNumber.substring(0, 32) : partNumber;
+                birthPayload.append("PNR ").append(pn).append("*"); // Current PN (mandatory)
+                if (currentUidConstruct == 2)
+                    birthPayload.append("PNO ").append(pn).append("*"); // Original PN (Construct 2)
+            }
             birthPayload.append("UIC ").append(currentUidConstruct).append("*");
             if (productName != null && !productName.isEmpty())
                 birthPayload.append("PDT ")
@@ -1127,6 +1141,7 @@ public class MemoryWriter {
                     ? birthPayload.substring(1)
                     : birthPayload.toString();
             birthText = appendExtraTeis(birthText); // optional extra ATA TEIs
+            Log.i(TAG, "📝 DRT Birth TEIs: " + birthText); // audit trail of written fields
 
             String birthBits = AtaEncodingUtils.padToMultiple(
                     AtaEncodingUtils.encode6Bit(birthText) + "000000", 16);

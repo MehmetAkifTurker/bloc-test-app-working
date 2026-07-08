@@ -433,6 +433,13 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
           "Part Description (PDT) is too long (max 32 chars per ATA Spec).");
       return;
     }
+    // ATA Spec Table 8: PDT (Part Description) is MANDATORY for the Multi-
+    // Record Format (it is only conditional for DRT/SRT).
+    if (_selectedTagType?.recordType == 'MRT' && _selectedDesc.trim().isEmpty) {
+      _showSnackBar(
+          "Item Description (PDT) is required for MRT tags (ATA Spec Table 8).");
+      return;
+    }
     // Validate date format (YYYYMMDD = 8 chars)
     if (manufactureDateFormatted.isNotEmpty &&
         manufactureDateFormatted.length != 8) {
