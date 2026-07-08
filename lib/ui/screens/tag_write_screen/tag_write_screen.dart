@@ -683,15 +683,65 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
     final picked = await showModalBottomSheet<OptionalTei>(
       context: context,
       showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: available
-              .map((t) => ListTile(
-                    title: Text('${t.code} — ${t.label}'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 2, 20, 12),
+              child: Row(
+                children: [
+                  const Icon(Icons.playlist_add, color: _brandNavy),
+                  const SizedBox(width: 10),
+                  Text('Add Optional ATA Field',
+                      style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _brandNavy)),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                itemCount: available.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                itemBuilder: (_, i) {
+                  final t = available[i];
+                  return ListTile(
+                    // TEI code as a compact navy badge, description beside it.
+                    leading: Container(
+                      width: 52,
+                      alignment: Alignment.center,
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0x1A1B2A4A), // _brandNavy @ ~10%
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(t.code,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: _brandNavy)),
+                    ),
+                    title: Text(t.label,
+                        style: const TextStyle(fontWeight: FontWeight.w500)),
+                    subtitle: Text('Max ${t.maxLen} '
+                        '${t.maxLen == 1 ? "char" : "chars"}'),
+                    trailing: const Icon(Icons.add, color: _brandNavy),
                     onTap: () => Navigator.pop(ctx, t),
-                  ))
-              .toList(),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
