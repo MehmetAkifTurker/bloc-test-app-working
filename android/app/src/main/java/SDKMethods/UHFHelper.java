@@ -76,6 +76,11 @@ public class UHFHelper {
         InventoryManager.getInstance().setUserFetchPriority(priority);
     }
 
+    public int probeUserCapacityWords(String epc) {
+        return SDKMethods.reader.MemoryReader.getInstance()
+                .probeUserCapacityWords(epc == null ? "" : epc);
+    }
+
     public boolean stop() {
         return InventoryManager.getInstance().stop();
     }

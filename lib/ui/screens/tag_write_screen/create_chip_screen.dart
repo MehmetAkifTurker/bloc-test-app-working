@@ -60,6 +60,7 @@ const List<Map<String, dynamic>> kBuiltInTagTypes = [
     'permalockWords': 12,
     'defaultFilter': 14,
     'isBuiltIn': true,
+    'enablePermalock': true,
   },
   {
     'name': 'SRT Birth (Read-Only)',
@@ -69,8 +70,12 @@ const List<Map<String, dynamic>> kBuiltInTagTypes = [
     'permalockWords': 32,
     'defaultFilter': 14,
     'isBuiltIn': true,
+    'enablePermalock': true,
   },
   {
+    // "Rewritable" — must stay unlocked. enablePermalock MUST be false here;
+    // it defaults to true (see fromJson), which made a write on this preset
+    // report "permalocked!" even though 0 words were actually locked.
     'name': 'SRT Utility (Rewritable)',
     'recordType': 'SRT-U',
     'epcWords': 12,
@@ -78,6 +83,7 @@ const List<Map<String, dynamic>> kBuiltInTagTypes = [
     'permalockWords': 0,
     'defaultFilter': 14,
     'isBuiltIn': true,
+    'enablePermalock': false,
   },
   {
     'name': 'MRT Multi-Record',
@@ -87,6 +93,7 @@ const List<Map<String, dynamic>> kBuiltInTagTypes = [
     'permalockWords': 20,
     'defaultFilter': 14,
     'isBuiltIn': true,
+    'enablePermalock': true,
   },
 ];
 

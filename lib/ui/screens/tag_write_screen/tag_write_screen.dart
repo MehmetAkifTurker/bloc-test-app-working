@@ -457,10 +457,28 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
             defaultFilter: 14,
           );
 
+      // Measure the tag's REAL physical USER capacity before touching it.
+      // The tag-type preset (e.g. DRT=128w) is only a nominal guess; a tag
+      // that is physically smaller would take the EPC + a partial USER write
+      // and be left half-programmed. Probe first, then feed the real size to
+      // configureChipAta so the native size check rejects an oversized write
+      // BEFORE any bank is touched.
+      final int capacity = await RfidC72Plugin.probeUserCapacity();
+      if (capacity < 0) {
+        _showSnackBar(
+            "Tag not detected. Hold one tag steady in front of the antenna.");
+        return;
+      }
+      log("TagWriteScreen: probed USER capacity = $capacity words "
+          "(preset ${t.name} nominal ${t.userWords}w)");
+      // Use the smaller of preset and physical capacity as the hard limit.
+      final int effectiveUserWords =
+          capacity < t.userWords ? capacity : t.userWords;
+
       final configured = await RfidC72Plugin.configureChipAta(
         recordType: t.recordType,
         epcWords: t.epcWords,
-        userWords: t.userWords,
+        userWords: effectiveUserWords,
         permalockWords: t.permalockWords,
         enablePermalock: t.enablePermalock,
         lockEpc: false,
@@ -523,7 +541,15 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
       } else if (epcSuccess != true && userMemSuccess == true) {
         _showSnackBar("User Memory write successful, but EPC write failed.");
       } else if (epcSuccess == true && userMemSuccess != true) {
-        _showSnackBar("EPC write successful, but User Memory write failed.");
+        // Most likely cause when the probe showed the tag is smaller than the
+        // preset needs: the data didn't fit the physical bank.
+        if (capacity < t.userWords) {
+          _showSnackBar(
+              "Data too large for this tag (~$capacity words). "
+              "Pick a smaller tag type or remove optional fields.");
+        } else {
+          _showSnackBar("EPC written, but User Memory write failed.");
+        }
       } else {
         _showSnackBar("Write failed. Check logs for details.");
       }

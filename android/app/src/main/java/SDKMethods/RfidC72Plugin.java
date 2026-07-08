@@ -372,6 +372,22 @@ public class RfidC72Plugin implements FlutterPlugin, MethodCallHandler {
                         epcHex != null ? epcHex : "", cpn, pml, exd, crt, ohd));
                 break;
             }
+            case "probeUserCapacity": {
+                // Measure the tag's real physical USER capacity (words) before
+                // a write. Runs on the reader lock so it never collides with a
+                // scan/locate loop.
+                final String epc = call.argument("epc");
+                Observable.fromCallable(() -> {
+                            synchronized (SDKMethods.reader.MemoryReader.getInstance()) {
+                                return UHFHelper.getInstance()
+                                        .probeUserCapacityWords(epc != null ? epc : "");
+                            }
+                        })
+                        .subscribeOn(Schedulers.io())
+                        .observeOn(AndroidSchedulers.mainThread())
+                        .subscribe(result::success, e -> result.success(-1));
+                break;
+            }
             case "readUserMemory":
                 result.success(UHFHelper.getInstance().readUserMemory());
                 break;

@@ -173,6 +173,14 @@ class RfidC72Plugin {
     return powerLevel;
   }
 
+  /// Measure the tag's real physical USER capacity in words before writing.
+  /// Returns -1 if the tag can't be read (out of range / not present).
+  static Future<int> probeUserCapacity({String epc = ''}) async {
+    final int? words =
+        await _channel.invokeMethod('probeUserCapacity', {'epc': epc});
+    return words ?? -1;
+  }
+
   static Future<String?> get getFrequencyMode async {
     final String? frequencyMode =
         await _channel.invokeMethod('getFrequencyMode');

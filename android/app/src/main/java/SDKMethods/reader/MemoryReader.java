@@ -107,6 +107,101 @@ public class MemoryReader {
     }
 
     /**
+     * Probe the tag's PHYSICAL USER-bank capacity in words. Reading a word
+     * that physically exists succeeds (even if blank); reading past the end
+     * of the bank fails — so a binary search on "does 1 word at offset O
+     * read?" finds the highest existing word. This is the real capacity the
+     * write path must respect (the tag-type preset is only a nominal guess).
+     *
+     * @param epcHex EPC to filter on (targets one tag in a multi-tag field);
+     *               may be empty for a single-tag-in-range probe.
+     * @return capacity in words, or -1 if even word 0 can't be read (tag out
+     *         of range / not present).
+     */
+    public synchronized int probeUserCapacityWords(String epcHex) {
+        RFIDWithUHFUART reader = UHFManager.getInstance().getReader();
+        if (reader == null) return -1;
+
+        boolean wasRunning = InventoryManager.getInstance().isStarted();
+        try {
+            if (wasRunning) {
+                reader.stopInventory();
+                Thread.sleep(80);
+            }
+            UHFManager.getInstance().clearFilter();
+
+            int filterBank = RFIDWithUHFUART.Bank_EPC;
+            int filterStart = 32;
+            int filterBits = (epcHex != null && !epcHex.isEmpty()) ? epcHex.length() * 4 : 0;
+            String filterData = (epcHex != null) ? epcHex : "";
+
+            // Word 0 must be readable or we learn nothing (tag not reachable).
+            if (!probeWordReadable(reader, filterBank, filterStart, filterBits, filterData, 0)) {
+                Log.w(TAG, "capacity probe: word 0 unreadable (tag out of range?)");
+                return -1;
+            }
+
+            // Exponential ramp to bracket the end, then binary search.
+            // Cap at 4096 words (ATA MRT max class of chip).
+            final int HARD_CAP = 4096;
+            int lo = 0;                 // known readable
+            int hi = 1;                 // to be tested
+            while (hi <= HARD_CAP
+                    && probeWordReadable(reader, filterBank, filterStart, filterBits, filterData, hi)) {
+                lo = hi;
+                hi <<= 1;
+            }
+            if (hi > HARD_CAP) hi = HARD_CAP + 1;
+
+            // Binary search for highest readable offset in (lo, hi).
+            while (lo + 1 < hi) {
+                int mid = lo + (hi - lo) / 2;
+                if (probeWordReadable(reader, filterBank, filterStart, filterBits, filterData, mid)) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            int capacity = lo + 1; // lo is the highest readable word index
+            Log.i(TAG, "✅ USER capacity probe: " + capacity + " words ("
+                    + (capacity * 16) + " bits)");
+            return capacity;
+
+        } catch (Exception e) {
+            Log.e(TAG, "capacity probe error: " + e.getMessage());
+            return -1;
+        } finally {
+            UHFManager.getInstance().clearFilter();
+            restoreInventory(wasRunning && InventoryManager.getInstance().isStarted());
+        }
+    }
+
+    /** True if 1 USER word at the given offset can be read (2 tries). */
+    private boolean probeWordReadable(RFIDWithUHFUART reader, int filterBank,
+            int filterStart, int filterBits, String filterData, int offset) {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                String w;
+                if (filterBits > 0) {
+                    w = reader.readData("00000000", filterBank, filterStart, filterBits,
+                            filterData, RFIDWithUHFUART.Bank_USER, offset, 1);
+                } else {
+                    w = reader.readData("00000000", RFIDWithUHFUART.Bank_USER, offset, 1);
+                }
+                if (w != null && w.length() >= 4) return true;
+            } catch (Exception ignore) {
+            }
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Batch variant of {@link #readUserMemoryForEpcFull}: pauses the inventory
      * ONCE, reads USER for every EPC in the list back-to-back, then resumes.
      * Amortizes the stop/start overhead that dominates per-tag fetch time when
