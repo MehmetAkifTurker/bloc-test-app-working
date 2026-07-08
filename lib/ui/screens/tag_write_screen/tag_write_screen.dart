@@ -471,6 +471,31 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
       }
       log("TagWriteScreen: probed USER capacity = $capacity words "
           "(preset ${t.name} nominal ${t.userWords}w)");
+
+      // ATA Spec 2000, Table 14 — minimum chip size per record type. Writing a
+      // record type onto a chip below its spec minimum produces a tag that is
+      // out of spec even if the bytes fit (this is what let a 96-word chip
+      // take a DRT, which the spec reserves for 2k-bit / 128-word chips).
+      const Map<String, int> kSpecMinWords = {
+        'DRT': 128, // 2k bit
+        'SRT-B': 32, // 512 bit
+        'SRT-U': 32, // 512 bit
+        'MRT': 512, // spec: 8 KByte (4096w); 512w pragmatic floor for small MRT
+      };
+      final int specMin = kSpecMinWords[t.recordType] ?? 32;
+      if (capacity < specMin) {
+        // Suggest the record types this chip IS large enough for.
+        final fits = kSpecMinWords.entries
+            .where((e) => capacity >= e.value)
+            .map((e) => e.key)
+            .join(', ');
+        _showSnackBar(
+            "This tag (~$capacity words) is too small for ${t.recordType} "
+            "(ATA Spec min $specMin words)."
+            "${fits.isEmpty ? '' : ' Fits: $fits.'}");
+        return;
+      }
+
       // Use the smaller of preset and physical capacity as the hard limit.
       final int effectiveUserWords =
           capacity < t.userWords ? capacity : t.userWords;
