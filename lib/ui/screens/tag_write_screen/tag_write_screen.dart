@@ -1219,68 +1219,52 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
                   ),
                   const SizedBox(height: 10),
                   _buildExtraFieldsSection(),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _brandNavy,
-                            shape: const StadiumBorder(),
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            fixedSize: const Size.fromHeight(48),
-                            textStyle:
-                                const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          onPressed: () async {
-                            final created = await Navigator.push<TagType>(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const TagTypeManagerPage()),
-                            );
-                            if (created != null) {
-                              setState(() {
-                                _tagTypes.add(created);
-                                _selectedTagType = created;
-                              });
-                              await _saveTagTypes();
-                            }
-                          },
-                          icon: const Icon(Icons.memory),
-                          label: const Text('Create New Chip'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            foregroundColor: _brandNavy,
-                            shape: const StadiumBorder(),
-                            fixedSize: const Size.fromHeight(48),
-                            textStyle:
-                                const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          onPressed: _isWriting ? null : _writeToTag,
-                          child: _isWriting
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('Write To Tag'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  // Bottom scroll spacer so the action buttons clear the system
-                  // navigation bar and are fully visible at the end of the list.
-                  const SizedBox(height: 24),
                 ],
               ),
             ),
+          ),
+        ),
+        // Primary action pinned to the bottom so it's always reachable,
+        // independent of form scroll. Full-width, navy-filled = the one
+        // clear action (Create-New-Chip removed; custom types are still
+        // available via the "+" next to the Tag Type dropdown).
+        bottomNavigationBar: _buildWriteBar(),
+      ),
+    );
+  }
+
+  Widget _buildWriteBar() {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          border: Border(top: BorderSide(color: Colors.grey.shade300)),
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _brandNavy,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: _brandNavy.withOpacity(0.5),
+              shape: const StadiumBorder(),
+              fixedSize: const Size.fromHeight(52),
+              textStyle: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            onPressed: _isWriting ? null : _writeToTag,
+            child: _isWriting
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Text('WRITE TO TAG'),
           ),
         ),
       ),
