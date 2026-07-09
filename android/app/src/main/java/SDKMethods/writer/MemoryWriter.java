@@ -158,41 +158,50 @@ public class MemoryWriter {
         return false;
     }
 
-    /**
-     * Read back the first totalWords of USER memory (nearest tag — same
-     * addressing the write used) and compare with what we wrote.
-     */
+    /** Full-image verify (Birth/DRT/MRT write the whole image from word 0). */
     private boolean verifyUserWrite(RFIDWithUHFUART reader, String expectedHex, int totalWords) {
+        return verifyUserWrite(reader, expectedHex, totalWords, 0);
+    }
+
+    /**
+     * Read back totalWords of USER memory starting at startWord and compare
+     * with what we wrote. startWord != 0 lets in-place record updates
+     * (Lifecycle at lifecycleAddr, CDR at cdrAddr) verify just the record
+     * they rewrote, not the whole image.
+     */
+    private boolean verifyUserWrite(RFIDWithUHFUART reader, String expectedHex,
+            int totalWords, int startWord) {
         try {
             String expected = expectedHex.toUpperCase(Locale.ROOT);
             StringBuilder readBack = new StringBuilder();
-            int offset = 0;
-            while (offset < totalWords) {
-                int n = Math.min(32, totalWords - offset);
+            int read = 0;
+            while (read < totalWords) {
+                int n = Math.min(32, totalWords - read);
                 String chunk = null;
                 for (int r = 0; r < 2 && (chunk == null || chunk.isEmpty()); r++) {
-                    chunk = reader.readData("00000000", RFIDWithUHFUART.Bank_USER, offset, n);
+                    chunk = reader.readData("00000000", RFIDWithUHFUART.Bank_USER,
+                            startWord + read, n);
                     if (chunk == null || chunk.isEmpty()) Thread.sleep(40);
                 }
                 if (chunk == null || chunk.isEmpty()) {
-                    Log.e(TAG, "❌ USER verify: read-back failed @word " + offset);
+                    Log.e(TAG, "❌ USER verify: read-back failed @word " + (startWord + read));
                     return false;
                 }
                 readBack.append(chunk);
-                offset += n;
+                read += n;
             }
             String got = readBack.toString().toUpperCase(Locale.ROOT);
             int cmpLen = Math.min(got.length(), expected.length());
             if (got.regionMatches(0, expected, 0, cmpLen) && cmpLen == expected.length()) {
-                Log.i(TAG, "✅ USER verify OK (" + totalWords + "w)");
+                Log.i(TAG, "✅ USER verify OK (" + totalWords + "w @word " + startWord + ")");
                 return true;
             }
-            // Diagnostics: first differing word
+            // Diagnostics: first differing word (relative to startWord)
             int diffWord = -1;
             for (int i = 0; i < cmpLen; i += 4) {
                 int end = Math.min(i + 4, cmpLen);
                 if (!got.regionMatches(0 + i, expected, i, end - i)) {
-                    diffWord = i / 4;
+                    diffWord = startWord + i / 4;
                     break;
                 }
             }
@@ -1705,7 +1714,11 @@ public class MemoryWriter {
                     String.format("%04X", AtaEncodingUtils.calculateCrc16Ccitt(cdrDataNoCrc));
 
             boolean success = writeUserWords(reader, cdrAddr, cdrRecordSize, newCdrRecordHex, "CDR");
-            Log.i(TAG, success ? "✅ CDR-UPDATE: Success!" : "❌ CDR-UPDATE: Failed!");
+            // Read-back verify the rewritten CDR (same guard as Birth/DRT/MRT).
+            if (success) {
+                success = verifyUserWrite(reader, newCdrRecordHex, cdrRecordSize, cdrAddr);
+            }
+            Log.i(TAG, success ? "✅ CDR-UPDATE: Success (verified)!" : "❌ CDR-UPDATE: Failed!");
 
             return success;
 
@@ -1908,7 +1921,14 @@ public class MemoryWriter {
                         newLifecycleRecordHex, "LIFECYCLE");
             }
 
-            Log.i(TAG, success ? "✅ LIFECYCLE-UPDATE: Success!" : "❌ LIFECYCLE-UPDATE: Failed!");
+            // Read-back verify the rewritten Lifecycle record (SDK write booleans
+            // aren't trustworthy on this hardware — same guard as Birth/DRT/MRT).
+            if (success) {
+                success = verifyUserWrite(reader, newLifecycleRecordHex,
+                        lifecycleRecordSize, lifecycleAddr);
+            }
+            Log.i(TAG, success ? "✅ LIFECYCLE-UPDATE: Success (verified)!"
+                    : "❌ LIFECYCLE-UPDATE: Failed!");
 
             return success;
 
