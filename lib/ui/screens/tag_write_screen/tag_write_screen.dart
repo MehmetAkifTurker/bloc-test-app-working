@@ -616,9 +616,20 @@ class _TagWriteScreenState extends State<TagWriteScreen> {
         return;
       }
 
-      // Use the smaller of preset and physical capacity as the hard limit.
-      final int effectiveUserWords =
-          capacity < t.userWords ? capacity : t.userWords;
+      // Use the tag's REAL capacity (not the nominal preset), capped at the
+      // ATA Spec 2000 container maximum for the record type (Table 14):
+      // SRT ≤ 2k bit (128w), DRT ≤ 2 KByte (1024w), MRT ≤ 8 KByte+ (4096w).
+      // This lets a large tag (e.g. 420w) allocate a correspondingly large
+      // rewritable Lifecycle/CDR area instead of being pinned to the 128w
+      // preset — the whole point of using a bigger chip.
+      const Map<String, int> kAtaMaxWords = {
+        'DRT': 1024, // 2 KByte
+        'SRT-B': 128, // 2k bit
+        'SRT-U': 128, // 2k bit
+        'MRT': 4096, // 8 KByte
+      };
+      final int ataMax = kAtaMaxWords[t.recordType] ?? 1024;
+      final int effectiveUserWords = capacity < ataMax ? capacity : ataMax;
 
       final configured = await RfidC72Plugin.configureChipAta(
         recordType: t.recordType,

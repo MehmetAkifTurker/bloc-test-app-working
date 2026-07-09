@@ -1199,9 +1199,14 @@ public class MemoryWriter {
             int usedWords = headerWords + rdWords + birthRecordSize + trailerWords;
             int availableForLifecycle = currentUserWords - usedWords - 3; // -3 for Lifecycle header(2) + CRC(1)
 
-            // Lifecycle payload: use all available space, min 8 words, max based on chip
-            // capacity
-            int lifecyclePayloadWords = Math.max(8, Math.min(availableForLifecycle, 64)); // Max 64 words (~200 chars)
+            // Lifecycle payload gets ALL remaining space (ATA Spec pre-allocation
+            // for a rewritable record that grows over the part's life) — no
+            // artificial 64w cap. currentUserWords already arrives capped at the
+            // ATA DRT container max (1024w) from the caller, and totalWords is
+            // re-checked against 1024 below, so a big tag (e.g. 420w) allocates a
+            // correspondingly large Lifecycle instead of leaving the chip mostly
+            // empty.
+            int lifecyclePayloadWords = Math.max(8, availableForLifecycle);
             int lifecycleRecordSize = 2 + lifecyclePayloadWords + 1;
 
             Log.d(TAG, "📝 Lifecycle: " + lifecyclePayloadWords + " payload words (~" + (lifecyclePayloadWords * 16 / 6)
