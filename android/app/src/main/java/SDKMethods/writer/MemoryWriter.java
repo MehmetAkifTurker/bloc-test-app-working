@@ -1675,6 +1675,17 @@ public class MemoryWriter {
             int cdrRecordSize = Integer.parseInt(
                     existingUserHex.substring(cdrRecordOffset, cdrRecordOffset + 4), 16);
 
+            // Physical-capacity guard (see updateLifecycleRecord): reject if the
+            // CDR would run past the tag's real USER capacity.
+            int cdrEndWord = cdrAddr + cdrRecordSize;
+            int cdrCapacityWords = SDKMethods.reader.MemoryReader.getInstance()
+                    .probeUserCapacityWords(epcHex == null ? "" : epcHex);
+            if (cdrCapacityWords > 0 && cdrEndWord > cdrCapacityWords) {
+                Log.e(TAG, "❌ CDR ends at word " + cdrEndWord
+                        + " but tag USER capacity is only " + cdrCapacityWords + " words");
+                return false;
+            }
+
             // Build new CDR payload (per Table 9 - with length validation)
             StringBuilder cdrPayload = new StringBuilder();
             if (currentPartNumber != null && !currentPartNumber.isEmpty())
@@ -1831,6 +1842,20 @@ public class MemoryWriter {
                     existingUserHex.substring(lifecycleRecordOffset, lifecycleRecordOffset + 4), 16);
 
             Log.d(TAG, "📝 Lifecycle addr=" + lifecycleAddr + ", size=" + lifecycleRecordSize + " words");
+
+            // Physical-capacity guard: confirm the tag actually holds the words
+            // we're about to rewrite. The record was allocated at first write,
+            // but probe the real chip capacity (same as the Tag Writer) so a
+            // smaller/swapped tag is rejected cleanly instead of a silent
+            // partial write past the end of memory.
+            int lifecycleEndWord = lifecycleAddr + lifecycleRecordSize;
+            int capacityWords = SDKMethods.reader.MemoryReader.getInstance()
+                    .probeUserCapacityWords(epcHex == null ? "" : epcHex);
+            if (capacityWords > 0 && lifecycleEndWord > capacityWords) {
+                Log.e(TAG, "❌ Lifecycle record ends at word " + lifecycleEndWord
+                        + " but tag USER capacity is only " + capacityWords + " words");
+                return false;
+            }
 
             // Build new Lifecycle payload (with length validation per ATA Spec Table 6)
             StringBuilder lifecyclePayload = new StringBuilder();
