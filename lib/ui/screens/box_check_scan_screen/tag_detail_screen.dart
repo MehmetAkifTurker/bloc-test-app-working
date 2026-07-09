@@ -416,13 +416,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     );
   }
 
-  /// Short-ToC single tags: SRT-U (tag type 0xA) carries a Utility record,
-  /// anything else is treated as a Birth Record (SRT-B).
-  bool _singleTagIsUtility(Map<String, dynamic> decodedUser) {
-    final tocHeader = decodedUser['tocHeader'];
-    return tocHeader is Map && tocHeader['ataTagType'] == 0x000A;
-  }
-
   bool _isDualRecordTag(Map<String, dynamic> decodedUser) {
     final tocHeader = decodedUser['tocHeader'];
     if (tocHeader == null) return false;
@@ -611,10 +604,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             RecordCardWidget(
               record: {
                 'descriptor': {
-                  'recordType': _singleTagIsUtility(decodedUser) ? 0xFF : 0x00,
-                  'recordTypeLabel': _singleTagIsUtility(decodedUser)
-                      ? 'Utility Record'
-                      : 'Birth Record',
+                  // A single-record tag's record IS a Birth Record (ATA Table 3)
+                  // even on a Utility tag — "Single Utility Record" is the TAG
+                  // type (shown as the badge via tagTypeLabel), not a record
+                  // type. ATA record types: Birth 0x00 / CDR 0x01 / Scratchpad
+                  // 0x02 / PHR 0x03 / Lifecycle 0x04 — there is no "Utility
+                  // Record" type.
+                  'recordType': 0x00,
+                  'recordTypeLabel': 'Birth Record',
                 },
                 'payloadText': payloadText,
                 'fields': decodedFields,
