@@ -633,10 +633,13 @@ public class LocationManager {
                                 }
                             }
                             
-                            // Convert RSSI to signal strength (0-100)
-                            // RSSI typically ranges from -25 (very strong) to -70 (weak)
-                            // We map: rssi 25 -> signal 100, rssi 70 -> signal 0
-                            int rawSignal = (int) Math.max(0, Math.min(100, (70 - rssiValue) * 100 / 45));
+                            // Convert RSSI to signal strength (0-100).
+                            // Real tags read ~-30..-35 dBm even pressed against
+                            // the antenna, so the old -25=100 mapping never hit
+                            // 100. Map -35 dBm (and stronger) -> 100, -70 -> 0,
+                            // so "on the tag" reliably shows full signal.
+                            int rawSignal = (int) Math.max(0, Math.min(100,
+                                    (70 - rssiValue) * 100 / 35));
                             
                             // Apply smoothing (moving average + change limiter)
                             int smoothedSignal = smoothSignal(rawSignal);
