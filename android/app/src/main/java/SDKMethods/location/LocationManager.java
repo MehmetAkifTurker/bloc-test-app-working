@@ -1,7 +1,9 @@
 package SDKMethods.location;
 
 import android.content.Context;
+import android.media.AudioAttributes;
 import android.media.AudioManager;
+import android.media.SoundPool;
 import android.media.ToneGenerator;
 import android.os.Handler;
 import android.os.Looper;
@@ -55,8 +57,12 @@ public class LocationManager {
     // Maximum change per update (prevents wild jumps)
     private static final int MAX_CHANGE_PER_UPDATE = 40;
     
-    // Sound - using ToneGenerator with STREAM_MUSIC for volume button control
+    // Sound - SoundPool plays a crisp locate "tick" (res/raw/locate_tick.wav);
+    // ToneGenerator kept as a fallback if the sample fails to load.
     private ToneGenerator toneGenerator;
+    private SoundPool soundPool;
+    private int tickSoundId = 0;
+    private volatile boolean tickLoaded = false;
     private AudioManager audioManager;
     
     private volatile boolean soundEnabled = false;
@@ -117,11 +123,37 @@ public class LocationManager {
             }
         }
         
-        // Initialize ToneGenerator with STREAM_MUSIC for volume button control
+        // SoundPool with the crisp locate tick (nicer than the system beep).
         try {
-            // Use MAX_VOLUME (100) - actual volume controlled by system STREAM_MUSIC
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build();
+            soundPool = new SoundPool.Builder()
+                    .setMaxStreams(4)
+                    .setAudioAttributes(attrs)
+                    .build();
+            soundPool.setOnLoadCompleteListener((sp, sampleId, status) -> {
+                tickLoaded = (status == 0);
+                Log.d(TAG, "🔊 locate_tick load " + (status == 0 ? "OK" : "FAILED(" + status + ")"));
+            });
+            if (appContext != null) {
+                int resId = appContext.getResources().getIdentifier(
+                        "locate_tick", "raw", appContext.getPackageName());
+                if (resId != 0) {
+                    tickSoundId = soundPool.load(appContext, resId, 1);
+                } else {
+                    Log.w(TAG, "locate_tick.wav not found in res/raw");
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "SoundPool init failed: " + e.getMessage());
+        }
+
+        // ToneGenerator fallback (used only if the SoundPool tick isn't ready).
+        try {
             toneGenerator = new ToneGenerator(AudioManager.STREAM_MUSIC, ToneGenerator.MAX_VOLUME);
-            Log.d(TAG, "✓ ToneGenerator initialized with STREAM_MUSIC (volume buttons work)");
+            Log.d(TAG, "✓ ToneGenerator fallback ready");
         } catch (Exception e) {
             Log.e(TAG, "ToneGenerator init failed: " + e.getMessage());
         }
@@ -133,41 +165,25 @@ public class LocationManager {
      * Volume is controlled by device's media volume buttons
      */
     private void playBeep() {
-        // Ensure ToneGenerator is initialized
-        if (toneGenerator == null) {
+        if (soundPool == null && toneGenerator == null) {
             initSound();
         }
-        
-        if (toneGenerator == null) {
-            Log.e(TAG, "ToneGenerator is null, cannot play beep");
-            return;
-        }
-        
-        // Try different tones for device compatibility
-        // TONE_PROP_BEEP is the most common, TONE_DTMF_1 is a fallback
-        int[] tonesToTry = {
-            ToneGenerator.TONE_PROP_BEEP,          // Standard proprietary beep
-            ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, // CDMA alert
-            ToneGenerator.TONE_DTMF_1,              // DTMF 1 (always works)
-        };
-        
-        for (int tone : tonesToTry) {
+        // Preferred: the crisp SoundPool tick.
+        if (soundPool != null && tickLoaded && tickSoundId != 0) {
             try {
-                toneGenerator.startTone(tone, BEEP_DURATION_MS);
-                return; // Success - exit
+                soundPool.play(tickSoundId, 1.0f, 1.0f, 1, 0, 1.0f);
+                return;
             } catch (Exception e) {
-                // Try next tone type
+                Log.w(TAG, "SoundPool play failed, falling back: " + e.getMessage());
             }
         }
-        
-        // If all failed, try to reinitialize
-        try {
-            toneGenerator.release();
-            toneGenerator = new ToneGenerator(AudioManager.STREAM_MUSIC, ToneGenerator.MAX_VOLUME);
-            toneGenerator.startTone(ToneGenerator.TONE_DTMF_1, BEEP_DURATION_MS);
-            Log.d(TAG, "Reinitialized ToneGenerator");
-        } catch (Exception e) {
-            Log.e(TAG, "All beep attempts failed: " + e.getMessage());
+        // Fallback: ToneGenerator system beep (until the sample is loaded).
+        if (toneGenerator != null) {
+            try {
+                toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, BEEP_DURATION_MS);
+            } catch (Exception e) {
+                Log.w(TAG, "ToneGenerator beep failed: " + e.getMessage());
+            }
         }
     }
 
@@ -290,9 +306,10 @@ public class LocationManager {
      * Signal 0 (far)          -> 1000ms (slow)
      */
     private int calculateInterval(int signal) {
-        // Linear mapping: signal 0->1000ms, signal 100->100ms
-        int interval = 1000 - (signal * 9);
-        return Math.max(100, Math.min(1000, interval));
+        // On the tag (100) -> ~70ms (rapid ticking), far (0) -> 900ms slow.
+        // Steeper than before so the rate change is felt across the range.
+        int interval = 900 - (signal * 83 / 10);
+        return Math.max(70, Math.min(900, interval));
     }
     
     /**
@@ -634,12 +651,13 @@ public class LocationManager {
                             }
                             
                             // Convert RSSI to signal strength (0-100).
-                            // Real tags read ~-30..-35 dBm even pressed against
-                            // the antenna, so the old -25=100 mapping never hit
-                            // 100. Map -35 dBm (and stronger) -> 100, -70 -> 0,
-                            // so "on the tag" reliably shows full signal.
+                            // Measured on this reader: a tag pressed to the
+                            // antenna reads ~-45 dBm (showed 70 with the old
+                            // /35 map), NOT -25/-35. Map -45 dBm (and stronger)
+                            // -> 100, -70 -> 0 (25 dB span) so "on the tag" hits
+                            // full signal.
                             int rawSignal = (int) Math.max(0, Math.min(100,
-                                    (70 - rssiValue) * 100 / 35));
+                                    (70 - rssiValue) * 100 / 25));
                             
                             // Apply smoothing (moving average + change limiter)
                             int smoothedSignal = smoothSignal(rawSignal);
@@ -771,6 +789,13 @@ public class LocationManager {
                 toneGenerator.release();
             } catch (Exception ignored) {}
             toneGenerator = null;
+        }
+        if (soundPool != null) {
+            try {
+                soundPool.release();
+            } catch (Exception ignored) {}
+            soundPool = null;
+            tickLoaded = false;
         }
     }
 
